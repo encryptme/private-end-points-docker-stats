@@ -124,7 +124,7 @@ class Scheduler(object):
 
         try:
             result = metric()
-            if isinstance(result, list):
+            if not isinstance(result, list):
                 result = [result]
 
             for doc in result:
