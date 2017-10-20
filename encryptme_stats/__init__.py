@@ -46,7 +46,7 @@ def main():
                         type=str, default="/etc/encryptme/encryptme.conf",
                         help="Location of encryptme.conf server config")
     parser.add_argument('--config', '-c',
-                        type=str, default='/etc/encryptme/encryptme_stats.conf',
+                        type=str, default='/etc/encryptme-stats.conf',
                         help='Location of encryptme_stats.conf encryptme_stats config')
     parser.add_argument('--now', action='store_true', default=False,
                         help='Force the next send to be immediately')
