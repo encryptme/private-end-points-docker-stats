@@ -69,4 +69,4 @@ def main():
     setup_logging(args.loglevel.upper())
     server_id, cfg = load_configs(args)
 
-    Scheduler.start(server_id, cfg, now=args.now)
+    Scheduler.start(server_id, cfg, now=args.now, force_server=args.server)

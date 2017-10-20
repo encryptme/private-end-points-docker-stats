@@ -79,12 +79,12 @@ class Scheduler(object):
     config = None
 
     @classmethod
-    def start(cls, server_id, config, now=False):
+    def start(cls, server_id, config, now=False, force_server=none):
         """Start the scheduler, and run forever."""
         cls.server_id = server_id
         cls.config = config
 
-        cls.server = config.server or config['encryptme_stats']['server']
+        cls.server = force_server or config['encryptme_stats']['server']
 
         cls.parse_schedule(config, now=now)
 
