@@ -79,7 +79,7 @@ class Scheduler(object):
     config = None
 
     @classmethod
-    def start(cls, server_id, config, now=False, force_server=none):
+    def start(cls, server_id, config, now=False, force_server=None):
         """Start the scheduler, and run forever."""
         cls.server_id = server_id
         cls.config = config
