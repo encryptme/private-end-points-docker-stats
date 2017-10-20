@@ -50,6 +50,9 @@ def main():
                         help='Location of encryptme_stats.conf encryptme_stats config')
     parser.add_argument('--now', action='store_true', default=False,
                         help='Force the next send to be immediately')
+    parser.add_argument("--server",
+                        type=str,
+                        help="Specify explicit server URL (overrides config)")
 
     args = parser.parse_args()
 

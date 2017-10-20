@@ -84,7 +84,7 @@ class Scheduler(object):
         cls.server_id = server_id
         cls.config = config
 
-        cls.server = config['encryptme_stats']['server']
+        cls.server = config.server or config['encryptme_stats']['server']
 
         cls.parse_schedule(config, now=now)
 
