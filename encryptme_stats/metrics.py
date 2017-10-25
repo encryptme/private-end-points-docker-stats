@@ -40,6 +40,7 @@ def _get_openvpn_stats(path="/var/run/openvpn/server-0.sock"):
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.connect(path)
+            sock.send("load-stats\n")
             sock.setblocking(0)
 
             ready = select.select([sock], [], [], 1.0)
