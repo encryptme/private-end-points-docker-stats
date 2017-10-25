@@ -12,14 +12,15 @@ from encryptme_stats import metrics
 from encryptme_stats.scheduler import Scheduler
 
 
-def dump():
+def dump(server_info={}):
     """Print JSON document from all exported metrics."""
     for metric_fn in metrics.__all__:
         output = getattr(metrics, metric_fn)()
-        if isinstance(output, list):
+        if not isinstance(output, list):
             output = [output]
         for doc in output:
-            print(json.dumps(doc, indent=4))
+            doc.update(server_info)
+            print(json.dumps({metric_fn: doc}, indent=2))
 
 
 def setup_logging(loglevel="INFO"):
@@ -39,7 +40,8 @@ def main():
     """Argument parsing and main loop."""
     parser = argparse.ArgumentParser(
         description='Send statistics to Encrypt.me.')
-    parser.add_argument('--dump', help='Dump what would be sent and exit')
+    parser.add_argument('--dump', action='store_true',
+                        help='Dump what would be sent and exit')
     parser.add_argument('--loglevel', type=str,
                         default='warning', help='Loglevel to use')
     parser.add_argument('--server-config', '-C',
@@ -67,11 +69,11 @@ def main():
 
         psutil.PROCFS_PATH = os.environ["PROC_ROOT"]
 
-    if args.dump:
-        dump()
-        sys.exit(0)
-
     setup_logging(args.loglevel.upper())
     info, cfg = load_configs(args)
+
+    if args.dump:
+        dump(info)
+        sys.exit(0)
 
     Scheduler.start(info, cfg, now=args.now, force_server=args.server)

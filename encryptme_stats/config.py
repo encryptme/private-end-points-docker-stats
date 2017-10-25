@@ -49,7 +49,7 @@ def load_configs(args):
                         args.server_config)
 
     info = {
-        "server_id": server_config['serverapi']['auth_token']
+        "auth_token": server_config['serverapi']['auth_token']
     }
 
     def _add_info(name, value):
@@ -57,7 +57,7 @@ def load_configs(args):
             info[name] = value
 
     if args.extra_node_information:
-        if 'server_id' not in server_config['serverapi']:
+        if 'server_id' in server_config['serverapi']:
             _add_info('server_id', server_config['serverapi']['server_id'])
 
         if os.path.exists("/etc/encryptme/data/server.json"):

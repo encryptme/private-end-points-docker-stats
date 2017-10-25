@@ -1,3 +1,9 @@
-# See setup.py
+# Don't forget setup.py
+netifaces==0.10.6
+psutil==5.4.0
+uptime==3.0.1
+proc==0.14
+docker==2.5.1
+schedule==0.4.3
+requests==2.18.4
 
-.
