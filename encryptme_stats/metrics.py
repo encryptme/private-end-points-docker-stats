@@ -168,6 +168,8 @@ def filesystem():
             return False
         if fs_info.mountpoint.startswith('/etc'):
             return False
+        if fs_info.mountpoint.startswith('/lib/modules'):
+            return False
         if fs_info.device.startswith('/dev/'):
             return True
         return False

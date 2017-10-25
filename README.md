@@ -12,3 +12,7 @@ This module gathers statistics about things of interest for Encrypt.me private e
 ### Installation
 
 pip install git+https://gitlab.toybox.ca/krayola/encryptme-metrics.git
+
+### Configuration
+
+TODO

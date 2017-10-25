@@ -1,6 +1,9 @@
 """Configuration handling functions."""
 
 import configparser
+import json
+
+import os
 
 from encryptme_stats import metrics
 from encryptme_stats.const import DEFAULT_STATS_INTERVAL, DEFAULT_SERVER, \
@@ -41,10 +44,32 @@ def load_configs(args):
     if 'serverapi' not in server_config.sections():
         raise Exception('section [serverapi] not found in %s' %
                         args.server_config)
-    if 'server_id' not in server_config['serverapi']:
-        raise Exception('section [serverapi] not found in %s' %
+    if 'auth_token' not in server_config['serverapi']:
+        raise Exception('auth_token not found in section serverapi in %s' %
                         args.server_config)
 
-    server_id = server_config['serverapi']['server_id']
+    info = {
+        "server_id": server_config['serverapi']['auth_token']
+    }
 
-    return server_id, config
+    def _add_info(name, value):
+        if value:
+            info[name] = value
+
+    if args.extra_node_information:
+        if 'server_id' not in server_config['serverapi']:
+            _add_info('server_id', server_config['serverapi']['server_id'])
+
+        if os.path.exists("/etc/encryptme/data/server.json"):
+            try:
+                with open("/etc/encryptme/data/server.json") as data_file:
+                    data = json.load(data_file)
+                    _add_info('server_name', data.get('name', None))
+                    _add_info('target_id',
+                              data.get('target', {}).get('target_id', None))
+                    _add_info('target_name',
+                              data.get('target', {}).get('name', None))
+            except Exception as exc:  # noqa
+                pass
+
+    return info, config

@@ -53,6 +53,11 @@ def main():
     parser.add_argument("--server",
                         type=str,
                         help="Specify explicit server URL (overrides config)")
+    parser.add_argument("--extra-node-information",
+                        action='store_true', default=False,
+                        help="Include other node identifiers such as "
+                             "server_id, server name, target_id, and "
+                             "target name, if available.")
 
     args = parser.parse_args()
 
@@ -67,6 +72,6 @@ def main():
         sys.exit(0)
 
     setup_logging(args.loglevel.upper())
-    server_id, cfg = load_configs(args)
+    info, cfg = load_configs(args)
 
-    Scheduler.start(server_id, cfg, now=args.now, force_server=args.server)
+    Scheduler.start(info, cfg, now=args.now, force_server=args.server)

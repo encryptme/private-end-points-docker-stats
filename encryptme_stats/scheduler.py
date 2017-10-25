@@ -79,9 +79,9 @@ class Scheduler(object):
     config = None
 
     @classmethod
-    def start(cls, server_id, config, now=False, force_server=None):
+    def start(cls, server_info, config, now=False, force_server=None):
         """Start the scheduler, and run forever."""
-        cls.server_id = server_id
+        cls.server_info = server_info
         cls.config = config
 
         cls.server = force_server or config['encryptme_stats']['server']
@@ -117,7 +117,7 @@ class Scheduler(object):
             """Creates a Message class."""
 
             item['@timestamp'] = datetime.datetime.utcnow().isoformat()
-            item['server_id'] = cls.server_id
+            item.update(cls.server_info)
             item['@id'] = str(uuid.uuid4())
 
             return Message(item, retries, interval, cls.server)
