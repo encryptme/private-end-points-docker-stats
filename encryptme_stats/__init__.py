@@ -12,20 +12,22 @@ from encryptme_stats import metrics
 from encryptme_stats.scheduler import Scheduler
 
 
-def dump(server_info={}):
+def dump(server_info=None):
     """Print JSON document from all exported metrics."""
+
     for metric_fn in metrics.__all__:
         output = getattr(metrics, metric_fn)()
         if not isinstance(output, list):
             output = [output]
         for doc in output:
-            doc.update(server_info)
+            if server_info:
+                doc.update(server_info)
             print(json.dumps({metric_fn: doc}, indent=2))
 
 
 def setup_logging(loglevel="INFO"):
     """Setup logging module."""
-    root = logging.getLogger()
+    root = logging.getLogger('')
     root.setLevel(getattr(logging, loglevel))
 
     channel = logging.StreamHandler(sys.stdout)

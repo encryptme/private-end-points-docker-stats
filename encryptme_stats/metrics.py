@@ -1,5 +1,5 @@
 """Gather system statistics."""
-
+import logging
 import os
 import re
 import select
@@ -12,7 +12,7 @@ import psutil
 import uptime
 from docker import from_env as docker_from_env
 
-from .const import INTERESTING_TAGS, INTERESTING_CONTAINERS, \
+from encryptme_stats.const import INTERESTING_TAGS, INTERESTING_CONTAINERS, \
     INTERESTING_PROCESSES
 
 __all__ = ["vpn", "cpu", "network", "memory", "filesystem", "process",
@@ -29,8 +29,8 @@ def _get_ipsec_stats():
         for line in result.stdout.decode('utf-8').split("\n"):
             if 'ESTABLISHED' in line:
                 num_ipsec += 1
-    except Exception:
-        pass  # yummy
+    except Exception as exc:
+        logging.debug("Error gathering openvpn stats: %s", exc)
 
     return num_ipsec
 
@@ -38,19 +38,27 @@ def _get_ipsec_stats():
 def _get_openvpn_stats(path="/var/run/openvpn/server-0.sock"):
     """Get stats for OpenVPN connections."""
     try:
+        logging.debug("Getting metrics from %s", path)
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.connect(path)
-            sock.send("load-stats\n")
+            sock.send(b"load-stats\n")
             sock.setblocking(0)
 
-            ready = select.select([sock], [], [], 1.0)
+            ready = select.select([sock], [], [], 5.0)
             if ready[0]:
                 data = sock.recv(4096)
+                if not data:
+                    logging.debug("No result?")
+                    return 0
+                data = data.decode('utf-8')
+                logging.debug("Received %s", data)
                 data_match = re.search(r'nclients=(\d+)', data)
+                logging.debug("pattern match result %s", data_match)
                 if data_match:
+                    logging.debug("%s connections", data_match.group(1))
                     return int(data_match.group(1))
-    except Exception:
-        pass  # yummy
+    except Exception as exc:
+        logging.debug("Error gathering openvpn stats: %s", exc)
 
     return 0
 
@@ -303,7 +311,8 @@ def docker():
                     container.labels['version']
             containers.append(docker_metrics)
 
-    except Exception:
+    except Exception as exc:
+        logging.debug("Error gathering Docker info: %s", exc)
         return []
 
     return containers
