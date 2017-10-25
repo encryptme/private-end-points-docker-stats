@@ -162,16 +162,16 @@ def filesystem():
         """Check if we want to include a filesystem in the results."""
         if fs_info.mountpoint == '/':
             return True
-        if fs_info.device == fs_info.fstype or fs_info.fstype == 'nullfs':
+
+        if (fs_info.device == fs_info.fstype or fs_info.fstype == 'nullfs' or
+                '/docker' in fs_info.mountpoint or
+                fs_info.mountpoint.startswith('/etc') or
+                fs_info.mountpoint.startswith('/lib/modules')):
             return False
-        if '/docker' in fs_info.mountpoint:
-            return False
-        if fs_info.mountpoint.startswith('/etc'):
-            return False
-        if fs_info.mountpoint.startswith('/lib/modules'):
-            return False
+
         if fs_info.device.startswith('/dev/'):
             return True
+
         return False
 
     filesystems = [fs for fs in psutil.disk_partitions(all=True) if fs_ok(fs)]
