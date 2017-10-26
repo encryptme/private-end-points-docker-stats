@@ -7,6 +7,8 @@ import sys
 
 import os
 
+import time
+
 from encryptme_stats.config import load_configs
 from encryptme_stats import metrics
 from encryptme_stats.scheduler import Scheduler
@@ -23,6 +25,13 @@ def dump(server_info=None):
             if server_info:
                 doc.update(server_info)
             print(json.dumps({metric_fn: doc}, indent=2))
+
+    # Wait a moment to test network delta
+    time.sleep(1)
+    for doc in metrics.network():
+        if server_info:
+            doc.update(server_info)
+        print(json.dumps({metric_fn: doc}, indent=2))
 
 
 def setup_logging(loglevel="INFO"):

@@ -9,6 +9,7 @@ import subprocess
 import netifaces
 import proc.core
 import psutil
+import time
 import uptime
 from docker import from_env as docker_from_env
 
@@ -117,7 +118,7 @@ def cpu():
     return info
 
 
-def network():
+class Network(object):
     """
     Gather network encryptme_stats on the primary gateway interface.
 
@@ -125,21 +126,56 @@ def network():
              interfaces
     """
 
-    gw_interfaces = set()
-    all_gateways = netifaces.gateways()
-    for gateway in all_gateways.get('default', {}).values():
-        gw_interfaces.add(gateway[1])
+    def __call__(self, *args, **kwargs):
 
-    info = []
-    for interface, metrics in psutil.net_io_counters(pernic=True).items():
-        if interface in gw_interfaces:
+        return self.compute_metrics()
+
+    def __init__(self):
+
+        self.start_time = time.time()
+        self.last_metrics = self.metrics()
+
+    def metrics(self):
+        """Gather metrics."""
+        info = {}
+
+        gw_interfaces = set()
+        all_gateways = netifaces.gateways()
+        for gateway in all_gateways.get('default', {}).values():
+            gw_interfaces.add(gateway[1])
+
+        for interface, metrics in psutil.net_io_counters(pernic=True).items():
+            if interface in gw_interfaces:
+                info[interface] = metrics._asdict()
+        return info
+
+    def compute_metrics(self):
+
+        current_counters = self.metrics()
+
+        info = []
+        for interface, metrics in current_counters.items():
+            if interface not in self.last_metrics:
+                self.last_metrics[interface] = {}
+
+            delta = {}
+            for key, value in metrics.items():
+                delta[key] = value - self.last_metrics[interface].get(key, 0)
+
             if_info = {
                 "stats_type": "net",
                 "net_interface": interface,
-                "net": metrics._asdict(),
+                "net": metrics,
+                "net_delta": delta,
             }
             info.append(if_info)
-    return info
+
+        self.last_metrics = current_counters
+
+        return info
+
+
+network = Network()
 
 
 def memory():
