@@ -24,9 +24,16 @@ def _get_ipsec_stats():
     """Get stats for IPSEC connections."""
     num_ipsec = 0
     try:
-        result = subprocess.run(["ipsec", "status"],
-                                stdout=subprocess.PIPE,
-                                check=False)
+        try:
+            # Python 3.5+
+            result = subprocess.run(["ipsec", "status"],
+                                    stdout=subprocess.PIPE,
+                                    check=False)
+        except AttributeError:
+            result = subprocess.call(["ipsec", "status"],
+                                     stdout=subprocess.PIPE,
+                                     check=False)
+
         for line in result.stdout.decode('utf-8').split("\n"):
             if 'ESTABLISHED' in line:
                 num_ipsec += 1
