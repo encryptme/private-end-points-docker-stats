@@ -29,11 +29,12 @@ def _get_ipsec_stats():
             result = subprocess.run(["ipsec", "status"],
                                     stdout=subprocess.PIPE,
                                     check=False)
+            output = result.stdout.decode('utf-8').split("\n")
         except AttributeError:
-            result = subprocess.check_call(["ipsec", "status"],
-                                           stdout=subprocess.PIPE)
+            result = subprocess.check_output(["ipsec", "status"])
+            output = result.decode('utf-8').split("\n")
 
-        for line in result.stdout.decode('utf-8').split("\n"):
+        for line in output:
             if 'ESTABLISHED' in line:
                 num_ipsec += 1
     except Exception as exc:
