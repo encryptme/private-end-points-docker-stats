@@ -5,12 +5,16 @@ import logging
 import random
 import time
 import uuid
+import os
 from functools import partial
 
 import requests
 import schedule
 
 from encryptme_stats import metrics
+
+
+AUTH_KEY_PATH = '/etc/encryptme/stats.key'
 
 
 class Message(object):
@@ -119,7 +123,9 @@ class Scheduler(object):
             item['@timestamp'] = datetime.datetime.utcnow().isoformat()
             item.update(cls.server_info)
             item['@id'] = str(uuid.uuid4())
-
+            if os.path.isfile(AUTH_KEY_PATH):
+                with open(AUTH_KEY_PATH, 'r') as key_file:
+                    item['@auth_key'] = key_file.read().strip()
             return Message(item, retries, interval, cls.server)
 
         try:
