@@ -6,8 +6,11 @@ import json
 import os
 
 from encryptme_stats import metrics
-from encryptme_stats.const import DEFAULT_STATS_INTERVAL, DEFAULT_SERVER, \
-    DEFAULT_MAX_RETRIES, DEFAULT_RETRY_DELAY
+from encryptme_stats.const import (
+    DEFAULT_STATS_INTERVAL, 
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_RETRY_DELAY,
+)
 
 
 def load_config(path, defaults=None):
@@ -28,7 +31,6 @@ def load_configs(args):
     config = load_config(args.config,
                          {
                              'interval': str(DEFAULT_STATS_INTERVAL),
-                             'server': str(DEFAULT_SERVER),
                              'max_retries': str(DEFAULT_MAX_RETRIES),
                              'retry_interval': str(DEFAULT_RETRY_DELAY),
                          })
@@ -44,12 +46,12 @@ def load_configs(args):
     if 'serverapi' not in server_config.sections():
         raise Exception('section [serverapi] not found in %s' %
                         args.server_config)
-    if 'auth_token' not in server_config['serverapi']:
-        raise Exception('auth_token not found in section serverapi in %s' %
+    if 'base_url' not in server_config['serverapi']:
+        raise Exception('base_url not found in section serverapi in %s' %
                         args.server_config)
 
     info = {
-        "auth_token": server_config['serverapi']['auth_token']
+        "api_url": server_config['serverapi']['base_url']
     }
 
     def _add_info(name, value):

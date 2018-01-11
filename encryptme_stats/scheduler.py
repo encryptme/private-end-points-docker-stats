@@ -14,9 +14,6 @@ import schedule
 from encryptme_stats import metrics
 
 
-AUTH_KEY_PATH = '/etc/encryptme/stats.key'
-
-
 class Message(object):
     """A message to send.
 
@@ -81,14 +78,19 @@ class Scheduler(object):
     server_id = None
     server = None
     config = None
+    auth_key = None
 
     @classmethod
-    def start(cls, server_info, config, now=False, force_server=None):
+    def start(cls, server_info, config, now=False, server=None, auth_key=None):
         """Start the scheduler, and run forever."""
+        cls.server = server or config['encryptme_stats']['server']
+        if not cls.server:
+            raise Exception("A server URL (e.g. http://pep-stats.example.com) "
+                            "is required as a command line parameter or set "
+                            "in the encryptme_stats config")
         cls.server_info = server_info
+        cls.auth_key = auth_key
         cls.config = config
-
-        cls.server = force_server or config['encryptme_stats']['server']
 
         cls.parse_schedule(config, now=now)
 
@@ -123,9 +125,8 @@ class Scheduler(object):
             item['@timestamp'] = datetime.datetime.utcnow().isoformat()
             item.update(cls.server_info)
             item['@id'] = str(uuid.uuid4())
-            if os.path.isfile(AUTH_KEY_PATH):
-                with open(AUTH_KEY_PATH, 'r') as key_file:
-                    item['@auth_key'] = key_file.read().strip()
+            if cls.auth_key:
+                item['@auth_key'] = cls.auth_key
             return Message(item, retries, interval, cls.server)
 
         try:

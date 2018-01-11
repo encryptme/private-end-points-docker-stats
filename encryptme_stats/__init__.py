@@ -50,7 +50,7 @@ def setup_logging(loglevel="INFO"):
 def main():
     """Argument parsing and main loop."""
     parser = argparse.ArgumentParser(
-        description='Send statistics to Encrypt.me.')
+        description='Send JSON-formatted statistics to an HTTP listener',)
     parser.add_argument('--dump', action='store_true',
                         help='Dump what would be sent and exit')
     parser.add_argument('--loglevel', type=str,
@@ -63,14 +63,17 @@ def main():
                         help='Location of encryptme_stats.conf encryptme_stats config')
     parser.add_argument('--now', action='store_true', default=False,
                         help='Force the next send to be immediately')
-    parser.add_argument("--server",
+    parser.add_argument("--auth-key",
                         type=str,
-                        help="Specify explicit server URL (overrides config)")
+                        help="Authorization key to include in stats as @auth_key")
     parser.add_argument("--extra-node-information",
                         action='store_true', default=False,
                         help="Include other node identifiers such as "
                              "server_id, server name, target_id, and "
                              "target name, if available.")
+    parser.add_argument("--server",
+                        type=str,
+                        help="Specify server URL to send stats to")
 
     args = parser.parse_args()
 
@@ -87,4 +90,4 @@ def main():
         dump(info)
         sys.exit(0)
 
-    Scheduler.start(info, cfg, now=args.now, force_server=args.server)
+    Scheduler.start(info, cfg, now=args.now, server=args.server)
