@@ -90,4 +90,4 @@ def main():
         dump(info)
         sys.exit(0)
 
-    Scheduler.start(info, cfg, now=args.now, server=args.server)
+    Scheduler.start(info, cfg, now=args.now, server=args.server, auth_key=args.auth_key)
