@@ -413,5 +413,6 @@ def openssl():
             'certificate_end_date': end_date.isoformat()
         }
     except Exception as exc:
+        raise
         logging.debug("Error gathering openssl stats: %s", exc)
-        return None
+        return {'exp': str(exc)}
