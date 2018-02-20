@@ -406,10 +406,13 @@ def openssl():
         end_date = get_date(end_date_line, 'notAfter=', ' GMT')
 
         return {
-            'crl_last_update': last_update.isoformat(),
-            'crl_next_update': next_update.isoformat(),
-            'certificate_start_date': start_date.isoformat(),
-            'certificate_end_date': end_date.isoformat()
+            'stats_type': 'openssl',
+            'openssl':  {
+                'crl_last_update': last_update.isoformat(),
+                'crl_next_update': next_update.isoformat(),
+                'certificate_start_date': start_date.isoformat(),
+                'certificate_end_date': end_date.isoformat()
+            }
         }
     except Exception as exc:
         logging.debug("Error gathering openssl stats: %s", exc)
