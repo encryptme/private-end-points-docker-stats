@@ -1,10 +1,12 @@
 """Gather system statistics."""
+from datetime import datetime
 import logging
 import os
 import re
 import select
 import socket
 import subprocess
+import re
 
 import netifaces
 import proc.core
@@ -17,23 +19,29 @@ from encryptme_stats.const import INTERESTING_TAGS, INTERESTING_CONTAINERS, \
     INTERESTING_PROCESSES
 
 __all__ = ["vpn", "cpu", "network", "memory", "filesystem", "process",
-           "docker"]
+           "docker", "openssl"]
+
+
+def subprocess_out(command):
+    try:
+        # Python 3.5+
+        result = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            check=False
+        )
+        output = result.stdout.decode('utf-8').split("\n")
+    except AttributeError:
+        result = subprocess.check_output(["ipsec", "status"])
+        output = result.decode('utf-8').split("\n")
+    return output
 
 
 def _get_ipsec_stats():
     """Get stats for IPSEC connections."""
     num_ipsec = 0
     try:
-        try:
-            # Python 3.5+
-            result = subprocess.run(["ipsec", "status"],
-                                    stdout=subprocess.PIPE,
-                                    check=False)
-            output = result.stdout.decode('utf-8').split("\n")
-        except AttributeError:
-            result = subprocess.check_output(["ipsec", "status"])
-            output = result.decode('utf-8').split("\n")
-
+        output = subprocess_out(["ipsec", "status"])
         for line in output:
             if 'ESTABLISHED' in line:
                 num_ipsec += 1
@@ -359,3 +367,51 @@ def docker():
         return []
 
     return containers
+
+
+def find_between(s, left, right):
+    try:
+        start = s.index(left) + len(left)
+        end = s.index(right, start)
+        return s[start:end]
+    except ValueError:
+        return ""
+
+
+def get_date(raw_date, left, right):
+    start = raw_date.index(left) + len(left)
+    end = raw_date.index(right, start)
+    raw_date = raw_date[start:end]
+    return datetime.strptime(raw_date, '%b %d %H:%M:%S %Y')
+
+
+def openssl():
+    try:
+        output = subprocess_out(
+            ['openssl', 'crl', '-inform', 'PEM', '-text', '-noout', '-in', '/etc/encryptme/pki/crls.pem'])
+
+        #get " Last Update: Feb 16 06:04:54 2018 GMT" and " Next Update: Feb 16 09:04:54 2018 GMT"
+        last_update_line = next(i for i in output if 'Last Update' in i)
+        next_update_line = next(i for i in output if 'Next Update' in i)
+        last_update = get_date(last_update_line, ': ', ' GMT')
+        next_update = get_date(next_update_line, ': ', ' GMT')
+
+        # output = subprocess_out(['find', '/etc/encryptme', '|', 'grep', 'cert1.pem'])
+        cert_filename = subprocess_out(['find', '/etc/encryptme', '|', 'grep', 'cert1.pem'])[0]
+        output = subprocess_out(['openssl', 'x509', '-noout', '-in', cert_filename])
+
+        # get "notBefore=Feb 16 05:41:58 2018 GMT" and "notAfter=May 17 05:41:58 2018 GMT"
+        start_date_line = next(i for i in output if 'notBefore' in i)
+        end_date_line = next(i for i in output if 'notAfter' in i)
+        start_date = get_date(start_date_line, 'notBefore=', ' GMT')
+        end_date = get_date(end_date_line, 'notAfter=', ' GMT')
+
+        return {
+            'crl_last_update': last_update.isoformat(),
+            'crl_next_update': next_update.isoformat(),
+            'certificate_start_date': start_date.isoformat(),
+            'certificate_end_date': end_date.isoformat()
+        }
+    except Exception as exc:
+        logging.debug("Error gathering openssl stats: %s", exc)
+        return None
