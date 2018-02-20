@@ -386,7 +386,6 @@ def get_date(raw_date, left, right):
 
 
 def openssl():
-    return {'foo': 123}
     try:
         output = subprocess_out(
             ['openssl', 'crl', '-inform', 'PEM', '-text', '-noout', '-in', '/etc/encryptme/pki/crls.pem'])
