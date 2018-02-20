@@ -32,7 +32,7 @@ def subprocess_out(command):
         )
         output = result.stdout.decode('utf-8').split("\n")
     except AttributeError:
-        result = subprocess.check_output(["ipsec", "status"])
+        result = subprocess.check_output(command)
         output = result.decode('utf-8').split("\n")
     return output
 
@@ -396,9 +396,8 @@ def openssl():
         last_update = get_date(last_update_line, ': ', ' GMT')
         next_update = get_date(next_update_line, ': ', ' GMT')
 
-        # output = subprocess_out(['find', '/etc/encryptme', '|', 'grep', 'cert1.pem'])
-        cert_filename = subprocess_out(['find', '/etc/encryptme', '|', 'grep', 'cert1.pem'])[0]
-        output = subprocess_out(['openssl', 'x509', '-noout', '-in', cert_filename])
+        cert_filename = subprocess_out(['find', '/etc/encryptme', '-iname', 'cert1.pem'])[0]
+        output = subprocess_out(['openssl', 'x509', '-dates', '-noout', '-in', cert_filename])
 
         # get "notBefore=Feb 16 05:41:58 2018 GMT" and "notAfter=May 17 05:41:58 2018 GMT"
         start_date_line = next(i for i in output if 'notBefore' in i)
@@ -413,6 +412,5 @@ def openssl():
             'certificate_end_date': end_date.isoformat()
         }
     except Exception as exc:
-        raise
         logging.debug("Error gathering openssl stats: %s", exc)
-        return {'exp': str(exc)}
+        return {}
