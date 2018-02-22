@@ -83,7 +83,7 @@ class Scheduler(object):
     @classmethod
     def start(cls, server_info, config, now=False, server=None, auth_key=None):
         """Start the scheduler, and run forever."""
-        cls.server = server or config['encryptme_stats']['server']
+        cls.server = server
         if not cls.server:
             raise Exception("A server URL (e.g. http://pep-stats.example.com) "
                             "is required as a command line parameter or set "

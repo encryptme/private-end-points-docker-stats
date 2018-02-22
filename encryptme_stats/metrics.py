@@ -405,13 +405,17 @@ def openssl():
         start_date = get_date(start_date_line, 'notBefore=', ' GMT')
         end_date = get_date(end_date_line, 'notAfter=', ' GMT')
 
+        now = datetime.now()
+
         return {
             'stats_type': 'openssl',
             'openssl':  {
                 'crl_last_update': last_update.isoformat(),
                 'crl_next_update': next_update.isoformat(),
+                'crl_remaining_days': (now - next_update).days,
                 'certificate_start_date': start_date.isoformat(),
-                'certificate_end_date': end_date.isoformat()
+                'certificate_end_date': end_date.isoformat(),
+                'certificate_remaining_days': (now - end_date).days
             }
         }
     except Exception as exc:
