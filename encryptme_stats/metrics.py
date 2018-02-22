@@ -412,10 +412,10 @@ def openssl():
             'openssl':  {
                 'crl_last_update': last_update.isoformat(),
                 'crl_next_update': next_update.isoformat(),
-                'crl_remaining_days': (now - next_update).days,
+                'crl_remaining_days': (next_update - now).days,
                 'certificate_start_date': start_date.isoformat(),
                 'certificate_end_date': end_date.isoformat(),
-                'certificate_remaining_days': (now - end_date).days
+                'certificate_remaining_days': (end_date - now).days
             }
         }
     except Exception as exc:
