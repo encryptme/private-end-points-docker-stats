@@ -412,7 +412,7 @@ def openssl():
             'openssl':  {
                 'crl_last_update': last_update.isoformat(),
                 'crl_next_update': next_update.isoformat(),
-                'crl_remaining_days': (next_update - now).days,
+                'crl_remaining_hours': int((next_update - now).total_seconds() / 60.0),
                 'certificate_start_date': start_date.isoformat(),
                 'certificate_end_date': end_date.isoformat(),
                 'certificate_remaining_days': (end_date - now).days
