@@ -369,15 +369,6 @@ def docker():
     return containers
 
 
-def find_between(s, left, right):
-    try:
-        start = s.index(left) + len(left)
-        end = s.index(right, start)
-        return s[start:end]
-    except ValueError:
-        return ""
-
-
 def get_date(raw_date, left, right):
     start = raw_date.index(left) + len(left)
     end = raw_date.index(right, start)
@@ -412,7 +403,7 @@ def openssl():
             'openssl':  {
                 'crl_last_update': last_update.isoformat(),
                 'crl_next_update': next_update.isoformat(),
-                'crl_remaining_hours': int((next_update - now).total_seconds() / 60.0),
+                'crl_remaining_hours': int((next_update - now).total_seconds() / 3600.0),
                 'certificate_start_date': start_date.isoformat(),
                 'certificate_end_date': end_date.isoformat(),
                 'certificate_remaining_days': (end_date - now).days
