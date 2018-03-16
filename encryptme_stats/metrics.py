@@ -387,7 +387,7 @@ def openssl():
         last_update = get_date(last_update_line, ': ', ' GMT')
         next_update = get_date(next_update_line, ': ', ' GMT')
 
-        cert_filename = subprocess_out(['find', '/etc/encryptme', '-iname', 'cert1.pem'])[0]
+        cert_filename = subprocess_out(['find', '/etc/encryptme', '-iname', 'cert.pem'])[0]
         output = subprocess_out(['openssl', 'x509', '-dates', '-noout', '-in', cert_filename])
 
         # get "notBefore=Feb 16 05:41:58 2018 GMT" and "notAfter=May 17 05:41:58 2018 GMT"
