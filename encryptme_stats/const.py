@@ -8,7 +8,7 @@ INTERESTING_PROCESSES = [
     "charon",
     "openvpn",
     "starter",
-    "filter_server",
+    "filter_server.p",
 ]
 INTERESTING_CONTAINERS = re.compile(r'encryptme|watchtower')
 INTERESTING_TAGS = re.compile(r'/(encryptme|watchtower)')

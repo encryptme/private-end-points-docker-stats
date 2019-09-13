@@ -285,10 +285,9 @@ def process():
         if not proc_name:
             continue
 
-        # if proc_info and proc_info.exe_name in interesting_procs:
-
         if 'sshd' in proc_name and ':' in proc_info.cmdline:
             continue
+            
         if proc_name not in info['proc']:
             info['proc'][proc_name] = {
                 'running': proc_info.state in ('R', 'S', 'D', 'T', 'W'),
@@ -330,8 +329,8 @@ def process():
                 int(proc_info.status_fields['nonvoluntary_ctxt_switches'])
             append(pinfo, 'age', proc_info.runtime)
 
-
     return info
+
 
 def docker():
     """
