@@ -256,6 +256,23 @@ def filesystem():
     return info
 
 
+def _get_proc_name(proc_info, interesting_procs):   
+    """
+    Obtain the proper process name.
+    In case the comm field is cut to 15 chars 
+    it will return the name of the interesting process.
+    """
+
+    if proc_info:
+        command = proc_info.comm
+        if command in interesting_procs:
+            return command
+        elif len(command) == 15:
+            for name in interesting_procs:
+                if name.startswith(command):
+                    return name
+    return None
+
 
 def process():
     """Check if processes that we care about are running.
@@ -275,15 +292,9 @@ def process():
     for pid in pids:
         proc_info = proc.core.Process.from_path(
             os.path.join(proc_root, str(pid)))
-        if not proc_info:
-            continue
-        proc_name = None
-        if proc_info.exe_name in interesting_procs:
-            proc_name = proc_info.exe_name
-        elif proc_info.comm in interesting_procs:
-            proc_name = proc_info.comm
-        if not proc_name:
-            continue
+
+        proc_name = _get_proc_name(proc_info, interesting_procs)       
+        if not proc_name: continue
 
         if 'sshd' in proc_name and ':' in proc_info.cmdline:
             continue
