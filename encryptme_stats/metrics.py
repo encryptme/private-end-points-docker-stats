@@ -7,6 +7,7 @@ import select
 import socket
 import subprocess
 import re
+import glob
 
 import netifaces
 import proc.core
@@ -19,7 +20,7 @@ from encryptme_stats.const import INTERESTING_TAGS, INTERESTING_CONTAINERS, \
     INTERESTING_PROCESSES
 
 __all__ = ["vpn", "cpu", "network", "memory", "filesystem", "process",
-           "docker", "openssl"]
+           "docker", "openssl", "contentfiltering"]
 
 
 def subprocess_out(command):
@@ -255,6 +256,23 @@ def filesystem():
     return info
 
 
+def _get_proc_name(proc_info, interesting_procs):   
+    """
+    Obtain the proper process name.
+    In case the comm field is cut to 15 chars 
+    it will return the name of the interesting process.
+    """
+
+    if proc_info:
+        command = proc_info.comm
+        if command in interesting_procs:
+            return command
+        elif len(command) == 15:
+            for name in interesting_procs:
+                if name.startswith(command):
+                    return name
+    return None
+
 
 def process():
     """Check if processes that we care about are running.
@@ -274,51 +292,56 @@ def process():
     for pid in pids:
         proc_info = proc.core.Process.from_path(
             os.path.join(proc_root, str(pid)))
-        if proc_info and proc_info.exe_name in interesting_procs:
-            if 'sshd' in proc_info.exe_name and ':' in proc_info.cmdline:
-                continue
-            if proc_info.exe_name not in info['proc']:
-                info['proc'][proc_info.exe_name] = {
-                    'running': proc_info.state in ('R', 'S', 'D', 'T', 'W'),
-                    # 'state': proc_info.state,
-                    'pid': proc_info.pid,
-                    'ppid': proc_info.ppid,
-                    'user_time': int(proc_info.stat_fields[16]),  #cutime
-                    'sys_time': int(proc_info.stat_fields[17]),  #cstime
-                    'vsize': proc_info.vsize,
-                    'rss': proc_info.rss,
-                    'voluntary_ctxt_switches': int(proc_info.status_fields[
-                        'voluntary_ctxt_switches']),
-                    'nonvoluntary_ctxt_switches': int(proc_info.status_fields[
-                        'nonvoluntary_ctxt_switches']),
-                    'age': proc_info.runtime,
-                    'count': 1
-                }
-            else:
-                pinfo = info['proc'][proc_info.exe_name]
-                pinfo['count'] += 1
 
-                def append(dest, field, value):
-                    """Append values for an existing process."""
-                    if isinstance(dest[field], list):
-                        dest[field].append(value)
-                    else:
-                        dest[field] = [dest[field], value]
+        proc_name = _get_proc_name(proc_info, interesting_procs)       
+        if not proc_name: continue
 
-                # append('state', proc_info.state)
-                append(pinfo, 'pid', proc_info.pid)
-                append(pinfo, 'ppid', proc_info.ppid)
-                pinfo['user_time'] += int(proc_info.stat_fields[16])  # cutime
-                pinfo['sys_time'] += int(proc_info.stat_fields[17])  # cstime
-                pinfo['vsize'] += proc_info.vsize
-                pinfo['rss'] += proc_info.rss
-                pinfo['voluntary_ctxt_switches'] = \
-                    int(proc_info.status_fields['voluntary_ctxt_switches'])
-                pinfo['nonvoluntary_ctxt_switches'] = \
-                    int(proc_info.status_fields['nonvoluntary_ctxt_switches'])
-                append(pinfo, 'age', proc_info.runtime)
+        if 'sshd' in proc_name and ':' in proc_info.cmdline:
+            continue
+            
+        if proc_name not in info['proc']:
+            info['proc'][proc_name] = {
+                'running': proc_info.state in ('R', 'S', 'D', 'T', 'W'),
+                # 'state': proc_info.state,
+                'pid': proc_info.pid,
+                'ppid': proc_info.ppid,
+                'user_time': int(proc_info.stat_fields[16]),  #cutime
+                'sys_time': int(proc_info.stat_fields[17]),  #cstime
+                'vsize': proc_info.vsize,
+                'rss': proc_info.rss,
+                'voluntary_ctxt_switches': int(proc_info.status_fields[
+                    'voluntary_ctxt_switches']),
+                'nonvoluntary_ctxt_switches': int(proc_info.status_fields[
+                    'nonvoluntary_ctxt_switches']),
+                'age': proc_info.runtime,
+                'count': 1
+            }
+        else:
+            pinfo = info['proc'][proc_name]
+            pinfo['count'] += 1
+
+            def append(dest, field, value):
+                """Append values for an existing process."""
+                if isinstance(dest[field], list):
+                    dest[field].append(value)
+                else:
+                    dest[field] = [dest[field], value]
+
+            # append('state', proc_info.state)
+            append(pinfo, 'pid', proc_info.pid)
+            append(pinfo, 'ppid', proc_info.ppid)
+            pinfo['user_time'] += int(proc_info.stat_fields[16])  # cutime
+            pinfo['sys_time'] += int(proc_info.stat_fields[17])  # cstime
+            pinfo['vsize'] += proc_info.vsize
+            pinfo['rss'] += proc_info.rss
+            pinfo['voluntary_ctxt_switches'] = \
+                int(proc_info.status_fields['voluntary_ctxt_switches'])
+            pinfo['nonvoluntary_ctxt_switches'] = \
+                int(proc_info.status_fields['nonvoluntary_ctxt_switches'])
+            append(pinfo, 'age', proc_info.runtime)
 
     return info
+
 
 def docker():
     """
@@ -412,3 +435,65 @@ def openssl():
     except Exception as exc:
         logging.debug("Error gathering openssl stats: %s", exc)
         return {}
+
+
+
+def _get_domain_stats(path):
+    """Get stats for blacklisted Domains."""
+    logging.debug("Getting domain stats from %s", path)
+    os.chdir(path)
+    domains = {}
+    for file in glob.glob("*.blacklist"):
+        count = 0
+        content_type = file.split('.')[0]
+        for line in open(os.path.join(path, file)):
+            count += 1
+
+        domains[content_type] = count
+
+    return domains
+
+
+def _get_ip_stats():
+    """Get stats for blacklisted IPs."""
+    ips = {}
+    output = subprocess_out(["ipset", "-n", "list"])
+    for sublist in output:
+        if not sublist:
+            continue
+        list_name = sublist.split('.')[0]
+        lines = subprocess_out(["ipset", "list", sublist])
+
+        index = lines.index('Members:')
+        lines = lines[index+1:]
+        while "" in lines: 
+            del lines[lines.index("")]
+
+        if list_name in ips:
+            ips[list_name] += len(lines)
+        else:
+            ips[list_name] = len(lines)
+
+    return ips
+
+
+def contentfiltering(path="/etc/encryptme/filters"):
+    """
+    Gather Content-Filtering statistics.
+
+    :return: dictionary with content-filtering statistics
+    """
+
+    domain_stats = _get_domain_stats(path)
+
+    ip_stats = _get_ip_stats()
+    
+    return {
+        "stats_type": "contentfiltering",
+        "contentfiltering": {
+            "domains": domain_stats,
+            "ips": ip_stats
+        }
+    }
+
+
