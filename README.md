@@ -12,7 +12,7 @@ This module gathers statistics about things of interest for Encrypt.me private e
 ### Installation
 
 ```bash
-   pip install git+https://gitlab.toybox.ca/krayola/encryptme-metrics.git
+   pip install git+https://github.com/encryptme/private-end-points-docker-stats.git
 ```
 
 ### Testing
