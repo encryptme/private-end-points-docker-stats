@@ -15,12 +15,13 @@ import psutil
 import time
 import uptime
 from docker import from_env as docker_from_env
+from parse import parse
 
 from encryptme_stats.const import INTERESTING_TAGS, INTERESTING_CONTAINERS, \
     INTERESTING_PROCESSES
 
 __all__ = ["vpn", "cpu", "network", "memory", "filesystem", "process",
-           "docker", "openssl", "contentfiltering"]
+           "docker", "openssl", "contentfiltering", "session"]
 
 
 def subprocess_out(command):
@@ -495,5 +496,107 @@ def contentfiltering(path="/etc/encryptme/filters"):
             "ips": ip_stats
         }
     }
+
+
+
+def _get_openvpn_session_stats():
+    info = []
+    output = subprocess_out(["cat", "/var/run/openvpn/server-0.status"])
+    output = "\n".join(output)
+    top = output.split('GLOBAL STATS')[0]
+    client_block, routing_block = top.split('ROUTING TABLE')
+
+    client_list = client_block.strip().split('\n')[3:]
+    routing_list = routing_block.strip().split('\n')[1:]
+
+    pattern = "%a %b %d %H:%M:%S %Y"
+    for index, line in enumerate(client_list):
+        stat_client = line.split(',')
+        stat_routing = routing_list[index].split(',')
+
+        started_at = int(datetime.strptime(stat_client[4], pattern).timestamp())
+        logged_at = int(datetime.utcnow().timestamp())
+        duration_seconds = logged_at - started_at
+
+        obj = {
+            'stats_type': 'session',
+            'session': {
+                'public_id': stat_client[0],
+                'private_ip': stat_routing[0],
+                'real_ip': stat_client[1].split(':')[0],
+                'started_at': started_at,
+                'logged_at': logged_at,
+                'duration_seconds': duration_seconds,
+                'bytes_up': stat_client[3],
+                'bytes_down': stat_client[2],
+                'protocol': 'openvpn',
+            }
+        } 
+        info.append(obj)
+
+    return info
+
+
+def _get_ipset_session_stats():
+    SECONDS = {
+        'seconds': 1,
+        'minutes': 60,
+        'hours': 3600,
+    }   
+    info=[]
+    output = subprocess_out(["ipsec", "status"])
+    for line in output:
+        if 'ESTABLISHED' in line:
+            line = line.strip()
+            result = parse("{} ESTABLISHED {} {} ago, {}[{}]...{}[{}CN={},{}", line) 
+
+            time_quantity = result[1]
+            time_unit = result[2]
+
+            duration_seconds = int(time_quantity) * SECONDS[time_unit]
+            logged_at = int(datetime.utcnow().timestamp())
+            started_at = logged_at - duration_seconds
+
+            obj = {
+                'stats_type': 'session',
+                'session': {
+                    'public_id': result[7],
+                    'private_ip': result[3],
+                    'real_ip': result[5],
+                    'started_at': started_at,
+                    'logged_at': logged_at,
+                    'duration_seconds': duration_seconds,
+                    'bytes_up': None,
+                    'bytes_down': None,
+                    'protocol': 'ipsec',
+                }
+            }
+            info.append(obj)
+
+    return info 
+
+
+
+def session():
+    """
+    Gather per-connection stats.
+
+    :return: list of dictionaries with connections statistics
+    """
+
+    empty = {
+        'stats_type': 'session',
+        'session': {}
+    }
+    return obj
+
+    openvpn_stat = _get_openvpn_session_stats()
+    ipsec_stat = _get_ipset_session_stats()
+
+    result = openvpn_stat + ipsec_stat
+    if len(result) == 0:
+        return empty
+
+    return openvpn_stat + ipsec_stat
 
 

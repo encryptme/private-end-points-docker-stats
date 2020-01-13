@@ -20,5 +20,6 @@ setup(name='encryptme_stats',
           'docker==2.5.1',
           'schedule==0.4.3',
           'requests==2.18.4',
+          'parse==1.14.0',
       ],
      )

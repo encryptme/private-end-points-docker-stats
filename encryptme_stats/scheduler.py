@@ -81,8 +81,8 @@ class Scheduler(object):
     auth_key = None
 
     @classmethod
-    def start(cls, server_info, config, now=False, server=None, auth_key=None):
-        """Start the scheduler, and run forever."""
+    def init(cls, server_info, config, now=False, server=None, auth_key=None):
+        """Initialize class attributes."""
         cls.server = server
         if not cls.server:
             raise Exception("A server URL (e.g. http://pep-stats.example.com) "
@@ -91,6 +91,10 @@ class Scheduler(object):
         cls.server_info = server_info
         cls.auth_key = auth_key
         cls.config = config
+
+    @classmethod
+    def start(cls):
+        """Start the scheduler, and run forever."""
 
         cls.parse_schedule(config, now=now)
 
