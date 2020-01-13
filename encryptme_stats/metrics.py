@@ -588,7 +588,6 @@ def session():
         'stats_type': 'session',
         'session': {}
     }
-    return obj
 
     openvpn_stat = _get_openvpn_session_stats()
     ipsec_stat = _get_ipset_session_stats()
@@ -597,6 +596,6 @@ def session():
     if len(result) == 0:
         return empty
 
-    return openvpn_stat + ipsec_stat
+    return result
 
 
