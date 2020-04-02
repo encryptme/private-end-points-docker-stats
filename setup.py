@@ -2,6 +2,7 @@
 
 from distutils.core import setup
 
+
 setup(
     name='encryptme_stats',
     version='0.9.15',
@@ -21,5 +22,6 @@ setup(
         'docker==2.5.1',
         'schedule==0.4.3',
         'requests==2.22.0',
+        'parse==1.14.0',
     ],
 )
