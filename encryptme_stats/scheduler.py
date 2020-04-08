@@ -5,7 +5,6 @@ import logging
 import random
 import time
 import uuid
-import os
 from functools import partial
 
 import requests
@@ -73,7 +72,7 @@ class Message(object):
 
 
 class Scheduler(object):
-    """Singleton that sets up scheduling and starts sending metrics"""
+    """Singleton that sets up scheduling and starts sending metrics."""
 
     server_id = None
     server = None
@@ -91,12 +90,12 @@ class Scheduler(object):
         cls.server_info = server_info
         cls.auth_key = auth_key
         cls.config = config
+        cls.now = now
 
     @classmethod
     def start(cls):
         """Start the scheduler, and run forever."""
-
-        cls.parse_schedule(config, now=now)
+        cls.parse_schedule(cls.config, now=cls.now)
 
         while True:
             schedule.run_pending()
@@ -122,10 +121,8 @@ class Scheduler(object):
     @classmethod
     def gather(cls, method, metric):
         """Gather statistics from the specified metric callable and send."""
-
         def make_message(item, retries, interval):
-            """Creates a Message class."""
-
+            """Create a Message class."""
             item['@timestamp'] = datetime.datetime.utcnow().isoformat()
             item.update(cls.server_info)
             item['@id'] = str(uuid.uuid4())
