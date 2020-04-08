@@ -1,13 +1,12 @@
 """Gather system statistics."""
 from datetime import datetime
+import glob
 import logging
 import os
 import re
 import select
 import socket
 import subprocess
-import re
-import glob
 
 import netifaces
 import proc.core
@@ -21,7 +20,7 @@ from encryptme_stats.const import INTERESTING_TAGS, INTERESTING_CONTAINERS, \
     INTERESTING_PROCESSES
 
 __all__ = ["vpn", "cpu", "network", "memory", "filesystem", "process",
-           "docker", "openssl", "contentfiltering", "session"]
+           "docker", "openssl", "contentfiltering", "vpn_session"]
 
 
 def subprocess_out(command):
@@ -87,7 +86,6 @@ def vpn():
 
     :return: dictionary with vpn statistics
     """
-
     # Get IPSEC encryptme_stats
     num_ipsec = _get_ipsec_stats()
 
@@ -105,11 +103,10 @@ def vpn():
 
 def cpu():
     """
-    Gather CPU metrics
+    Gather CPU metrics.
 
     :return: dictionary with CPU statistics
     """
-
     keep_cpu_stats = ['user', 'idle', 'system', 'nice', 'iowait', 'irq', 'softirq']
     # Ignoring: steal, guest, guest_nice
 
@@ -198,6 +195,7 @@ network = Network()
 def memory():
     """
     Gather memory statistics.
+
     :return: dictionary of Memory statistics
     """
     return {
@@ -213,12 +211,11 @@ def filesystem():
 
     :return: list of dictionaries of Filesystem encryptme_stats
     """
-
     info = []
 
     # Disabled this as it was including filesystems that aren't interesting.
-    #filesystems = psutil.disk_partitions(all=False)
-    #if '/' not in (fs.mountpoint for fs in psutil.disk_partitions()):
+    # filesystems = psutil.disk_partitions(all=False)
+    # if '/' not in (fs.mountpoint for fs in psutil.disk_partitions()):
 
     def fs_ok(fs_info):
         """Check if we want to include a filesystem in the results."""
@@ -257,13 +254,13 @@ def filesystem():
     return info
 
 
-def _get_proc_name(proc_info, interesting_procs):   
+def _get_proc_name(proc_info, interesting_procs):
     """
     Obtain the proper process name.
-    In case the comm field is cut to 15 chars 
+
+    In case the comm field is cut to 15 chars
     it will return the name of the interesting process.
     """
-
     if proc_info:
         command = proc_info.comm
         if command in interesting_procs:
@@ -276,10 +273,11 @@ def _get_proc_name(proc_info, interesting_procs):
 
 
 def process():
-    """Check if processes that we care about are running.
+    """
+    Check if processes that we care about are running.
 
     :return: dictionary of interesting process information
-     """
+    """
     interesting_procs = set(INTERESTING_PROCESSES)
 
     pids = psutil.pids()
@@ -294,20 +292,21 @@ def process():
         proc_info = proc.core.Process.from_path(
             os.path.join(proc_root, str(pid)))
 
-        proc_name = _get_proc_name(proc_info, interesting_procs)       
-        if not proc_name: continue
+        proc_name = _get_proc_name(proc_info, interesting_procs)
+        if not proc_name:
+            continue
 
         if 'sshd' in proc_name and ':' in proc_info.cmdline:
             continue
-            
+
         if proc_name not in info['proc']:
             info['proc'][proc_name] = {
                 'running': proc_info.state in ('R', 'S', 'D', 'T', 'W'),
                 # 'state': proc_info.state,
                 'pid': proc_info.pid,
                 'ppid': proc_info.ppid,
-                'user_time': int(proc_info.stat_fields[16]),  #cutime
-                'sys_time': int(proc_info.stat_fields[17]),  #cstime
+                'user_time': int(proc_info.stat_fields[16]),  # cutime
+                'sys_time': int(proc_info.stat_fields[17]),  # cstime
                 'vsize': proc_info.vsize,
                 'rss': proc_info.rss,
                 'voluntary_ctxt_switches': int(proc_info.status_fields[
@@ -405,7 +404,7 @@ def openssl():
         output = subprocess_out(
             ['openssl', 'crl', '-inform', 'PEM', '-text', '-noout', '-in', '/etc/encryptme/pki/crls.pem'])
 
-        #get " Last Update: Feb 16 06:04:54 2018 GMT" and " Next Update: Feb 16 09:04:54 2018 GMT"
+        # get " Last Update: Feb 16 06:04:54 2018 GMT" and " Next Update: Feb 16 09:04:54 2018 GMT"
         last_update_line = next(i for i in output if 'Last Update' in i)
         next_update_line = next(i for i in output if 'Next Update' in i)
         last_update = get_date(last_update_line, ': ', ' GMT')
@@ -424,7 +423,7 @@ def openssl():
 
         return {
             'stats_type': 'openssl',
-            'openssl':  {
+            'openssl': {
                 'crl_last_update': last_update.isoformat(),
                 'crl_next_update': next_update.isoformat(),
                 'crl_remaining_hours': float((next_update - now).total_seconds() / 3600.0),
@@ -436,7 +435,6 @@ def openssl():
     except Exception as exc:
         logging.debug("Error gathering openssl stats: %s", exc)
         return {}
-
 
 
 def _get_domain_stats(path):
@@ -466,8 +464,8 @@ def _get_ip_stats():
         lines = subprocess_out(["ipset", "list", sublist])
 
         index = lines.index('Members:')
-        lines = lines[index+1:]
-        while "" in lines: 
+        lines = lines[index + 1:]
+        while "" in lines:
             del lines[lines.index("")]
 
         if list_name in ips:
@@ -484,11 +482,10 @@ def contentfiltering(path="/etc/encryptme/filters"):
 
     :return: dictionary with content-filtering statistics
     """
-
     domain_stats = _get_domain_stats(path)
 
     ip_stats = _get_ip_stats()
-    
+
     return {
         "stats_type": "contentfiltering",
         "contentfiltering": {
@@ -496,7 +493,6 @@ def contentfiltering(path="/etc/encryptme/filters"):
             "ips": ip_stats
         }
     }
-
 
 
 def _get_openvpn_session_stats():
@@ -519,8 +515,8 @@ def _get_openvpn_session_stats():
         duration_seconds = logged_at - started_at
 
         obj = {
-            'stats_type': 'session',
-            'session': {
+            'stats_type': 'vpn_session',
+            'vpn_session': {
                 'public_id': stat_client[0],
                 'private_ip': stat_routing[0],
                 'real_ip': stat_client[1].split(':')[0],
@@ -531,7 +527,7 @@ def _get_openvpn_session_stats():
                 'bytes_down': stat_client[2],
                 'protocol': 'openvpn',
             }
-        } 
+        }
         info.append(obj)
 
     return info
@@ -542,13 +538,13 @@ def _get_ipset_session_stats():
         'seconds': 1,
         'minutes': 60,
         'hours': 3600,
-    }   
-    info=[]
+    }
+    info = []
     output = subprocess_out(["ipsec", "status"])
     for line in output:
         if 'ESTABLISHED' in line:
             line = line.strip()
-            result = parse("{} ESTABLISHED {} {} ago, {}[{}]...{}[{}CN={},{}", line) 
+            result = parse("{} ESTABLISHED {} {} ago, {}[{}]...{}[{}CN={},{}", line)
 
             time_quantity = result[1]
             time_unit = result[2]
@@ -558,8 +554,8 @@ def _get_ipset_session_stats():
             started_at = logged_at - duration_seconds
 
             obj = {
-                'stats_type': 'session',
-                'session': {
+                'stats_type': 'vpn_session',
+                'vpn_session': {
                     'public_id': result[7],
                     'private_ip': result[3],
                     'real_ip': result[5],
@@ -573,20 +569,18 @@ def _get_ipset_session_stats():
             }
             info.append(obj)
 
-    return info 
+    return info
 
 
-
-def session():
+def vpn_session():
     """
     Gather per-connection stats.
 
     :return: list of dictionaries with connections statistics
     """
-
     empty = {
-        'stats_type': 'session',
-        'session': {}
+        'stats_type': 'vpn_session',
+        'vpn_session': {}
     }
 
     openvpn_stat = _get_openvpn_session_stats()
@@ -597,5 +591,3 @@ def session():
         return empty
 
     return result
-
-
