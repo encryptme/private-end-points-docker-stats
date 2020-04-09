@@ -136,8 +136,10 @@ class Scheduler(object):
                 result = [result]
 
             for doc in result:
-                make_message(doc,
-                             int(cls.config[method]['max_retries']),
-                             int(cls.config[method]['retry_interval'])).send()
+                if doc:  # don't send empty metrics
+                    make_message(
+                        doc,
+                        int(cls.config[method]['max_retries']),
+                        int(cls.config[method]['retry_interval'])).send()
         except Exception as exc:
             logging.exception("Failed to gather data: %s", exc)

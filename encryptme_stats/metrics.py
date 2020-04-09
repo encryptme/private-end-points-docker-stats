@@ -514,12 +514,14 @@ def _get_openvpn_session_stats():
         logged_at = int(datetime.utcnow().timestamp())
         duration_seconds = logged_at - started_at
 
+        # real ip should be `stat_client[1].split(':')[0]`
+        # but we are worry about your privacy
         obj = {
             'stats_type': 'vpn_session',
             'vpn_session': {
                 'public_id': stat_client[0],
                 'private_ip': stat_routing[0],
-                'real_ip': stat_client[1].split(':')[0],
+                'real_ip': '127.0.0.1',
                 'started_at': started_at,
                 'logged_at': logged_at,
                 'duration_seconds': duration_seconds,
@@ -544,7 +546,8 @@ def _get_ipset_session_stats():
     for line in output:
         if 'ESTABLISHED' in line:
             line = line.strip()
-            result = parse("{} ESTABLISHED {} {} ago, {}[{}]...{}[{}CN={},{}", line)
+            result = parse(
+                "{} ESTABLISHED {} {} ago, {}[{}]...{}[{}CN={},{}", line)
 
             time_quantity = result[1]
             time_unit = result[2]
@@ -553,17 +556,19 @@ def _get_ipset_session_stats():
             logged_at = int(datetime.utcnow().timestamp())
             started_at = logged_at - duration_seconds
 
+            # real_ip should be `result[5]`
+            # but we are worry about your privacy
             obj = {
                 'stats_type': 'vpn_session',
                 'vpn_session': {
                     'public_id': result[7],
                     'private_ip': result[3],
-                    'real_ip': result[5],
+                    'real_ip': '127.0.0.1',
                     'started_at': started_at,
                     'logged_at': logged_at,
                     'duration_seconds': duration_seconds,
-                    'bytes_up': None,
-                    'bytes_down': None,
+                    'bytes_up': '',
+                    'bytes_down': '',
                     'protocol': 'ipsec',
                 }
             }
@@ -578,10 +583,7 @@ def vpn_session():
 
     :return: list of dictionaries with connections statistics
     """
-    empty = {
-        'stats_type': 'vpn_session',
-        'vpn_session': {}
-    }
+    empty = {}
 
     openvpn_stat = _get_openvpn_session_stats()
     ipsec_stat = _get_ipset_session_stats()
