@@ -583,7 +583,8 @@ def vpn_session():
 
     :return: list of dictionaries with connections statistics
     """
-    empty = {}
+    empty = []
+    return empty  # disable vpn_session metrcis for now
 
     openvpn_stat = _get_openvpn_session_stats()
     ipsec_stat = _get_ipset_session_stats()
