@@ -132,11 +132,11 @@ class Scheduler(object):
 
         try:
             result = metric()
-            if not isinstance(result, list):
-                result = [result]
+            if result:  # don't send empty metrics
+                if not isinstance(result, list):
+                    result = [result]
 
-            for doc in result:
-                if doc:  # don't send empty metrics
+                for doc in result:
                     make_message(
                         doc,
                         int(cls.config[method]['max_retries']),
