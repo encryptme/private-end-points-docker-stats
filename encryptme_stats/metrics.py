@@ -42,7 +42,7 @@ def _get_ipsec_stats():
     """Get stats for IPSEC connections."""
     num_ipsec = 0
     try:
-        output = subprocess_out(["ipsec", "status"])
+        output = subprocess_out(["/usr/sbin/ipsec", "status"])
         for line in output:
             if 'ESTABLISHED' in line:
                 num_ipsec += 1
@@ -456,12 +456,12 @@ def _get_domain_stats(path):
 def _get_ip_stats():
     """Get stats for blacklisted IPs."""
     ips = {}
-    output = subprocess_out(["ipset", "-n", "list"])
+    output = subprocess_out(["/usr/sbin/ipset", "-n", "list"])
     for sublist in output:
         if not sublist:
             continue
         list_name = sublist.split('.')[0]
-        lines = subprocess_out(["ipset", "list", sublist])
+        lines = subprocess_out(["/usr/sbin/ipset", "list", sublist])
 
         index = lines.index('Members:')
         lines = lines[index + 1:]
@@ -482,21 +482,38 @@ def contentfiltering(path="/etc/encryptme/filters"):
 
     :return: dictionary with content-filtering statistics
     """
-    domain_stats = _get_domain_stats(path)
+    try:
+        domain_stats = _get_domain_stats(path)
 
-    ip_stats = _get_ip_stats()
+        ip_stats = _get_ip_stats()
 
-    return {
-        "stats_type": "contentfiltering",
-        "contentfiltering": {
-            "domains": domain_stats,
-            "ips": ip_stats
+        return {
+            "stats_type": "contentfiltering",
+            "contentfiltering": {
+                "domains": domain_stats,
+                "ips": ip_stats
+            }
         }
-    }
+    except Exception as exc:
+        logging.debug("Error gathering contentfiltering stats: %s", exc)
+        return {}
+
+
+def _get_openvpn_disconnected_clients():
+    CN_FILE = "/tmp/common_names.txt"
+    common_names = []
+    if os.path.exists(CN_FILE):
+        with open(CN_FILE) as f:
+            common_names = f.read().splitlines()
+
+    return common_names
 
 
 def _get_openvpn_session_stats():
     info = []
+
+    # Obtain the common_name when client-disconnect is executed
+    common_names = _get_openvpn_disconnected_clients()
     output = subprocess_out(["cat", "/var/run/openvpn/server-0.status"])
     output = "\n".join(output)
     top = output.split('GLOBAL STATS')[0]
@@ -508,6 +525,11 @@ def _get_openvpn_session_stats():
     pattern = "%a %b %d %H:%M:%S %Y"
     for index, line in enumerate(client_list):
         stat_client = line.split(',')
+
+        # Avoid sending stats of just recently disconnected client
+        if stat_client[0] in common_names:
+            continue
+
         stat_routing = routing_list[index].split(',')
 
         started_at = int(datetime.strptime(stat_client[4], pattern).timestamp())
@@ -542,7 +564,7 @@ def _get_ipset_session_stats():
         'hours': 3600,
     }
     info = []
-    output = subprocess_out(["ipsec", "status"])
+    output = subprocess_out(["/usr/sbin/ipsec", "status"])
     for line in output:
         if 'ESTABLISHED' in line:
             line = line.strip()
@@ -583,14 +605,18 @@ def vpn_session():
 
     :return: list of dictionaries with connections statistics
     """
-    empty = []
-    return empty  # disable vpn_session metrcis for now
+    try:
+        empty = []
+        return empty  # disable vpn_session metrcis for now
 
-    openvpn_stat = _get_openvpn_session_stats()
-    ipsec_stat = _get_ipset_session_stats()
+        openvpn_stat = _get_openvpn_session_stats()
+        ipsec_stat = _get_ipset_session_stats()
 
-    result = openvpn_stat + ipsec_stat
-    if len(result) == 0:
-        return empty
+        result = openvpn_stat + ipsec_stat
+        if len(result) == 0:
+            return empty
 
-    return result
+        return result
+    except Exception as exc:
+        logging.debug("Error gathering vpn_session stats: %s", exc)
+        return {}
