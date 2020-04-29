@@ -42,7 +42,7 @@ def _get_ipsec_stats():
     """Get stats for IPSEC connections."""
     num_ipsec = 0
     try:
-        output = subprocess_out(["ipsec", "status"])
+        output = subprocess_out(["/usr/sbin/ipsec", "status"])
         for line in output:
             if 'ESTABLISHED' in line:
                 num_ipsec += 1
@@ -456,12 +456,12 @@ def _get_domain_stats(path):
 def _get_ip_stats():
     """Get stats for blacklisted IPs."""
     ips = {}
-    output = subprocess_out(["ipset", "-n", "list"])
+    output = subprocess_out(["/usr/sbin/ipset", "-n", "list"])
     for sublist in output:
         if not sublist:
             continue
         list_name = sublist.split('.')[0]
-        lines = subprocess_out(["ipset", "list", sublist])
+        lines = subprocess_out(["/usr/sbin/ipset", "list", sublist])
 
         index = lines.index('Members:')
         lines = lines[index + 1:]
@@ -482,99 +482,129 @@ def contentfiltering(path="/etc/encryptme/filters"):
 
     :return: dictionary with content-filtering statistics
     """
-    domain_stats = _get_domain_stats(path)
+    try:
+        domain_stats = _get_domain_stats(path)
 
-    ip_stats = _get_ip_stats()
+        ip_stats = _get_ip_stats()
 
-    return {
-        "stats_type": "contentfiltering",
-        "contentfiltering": {
-            "domains": domain_stats,
-            "ips": ip_stats
+        return {
+            "stats_type": "contentfiltering",
+            "contentfiltering": {
+                "domains": domain_stats,
+                "ips": ip_stats
+            }
         }
-    }
+    except Exception as exc:
+        logging.debug("Error gathering contentfiltering stats: %s", exc)
+        return {}
+
+
+def _get_openvpn_disconnected_clients():
+    CN_FILE = "/tmp/common_names.txt"
+    common_names = []
+    if os.path.exists(CN_FILE):
+        with open(CN_FILE) as f:
+            common_names = f.read().splitlines()
+
+    return common_names
 
 
 def _get_openvpn_session_stats():
     info = []
-    output = subprocess_out(["cat", "/var/run/openvpn/server-0.status"])
-    output = "\n".join(output)
-    top = output.split('GLOBAL STATS')[0]
-    client_block, routing_block = top.split('ROUTING TABLE')
+    try:
+        # Obtain the common_name when client-disconnect is executed
+        common_names = _get_openvpn_disconnected_clients()
+        output = subprocess_out(["cat", "/var/run/openvpn/server-0.status"])
+        output = "\n".join(output)
+        top = output.split('GLOBAL STATS')[0]
+        client_block, routing_block = top.split('ROUTING TABLE')
 
-    client_list = client_block.strip().split('\n')[3:]
-    routing_list = routing_block.strip().split('\n')[1:]
+        client_list = client_block.strip().split('\n')[3:]
+        routing_list = routing_block.strip().split('\n')[1:]
 
-    pattern = "%a %b %d %H:%M:%S %Y"
-    for index, line in enumerate(client_list):
-        stat_client = line.split(',')
-        stat_routing = routing_list[index].split(',')
+        pattern = "%a %b %d %H:%M:%S %Y"
+        for index, line in enumerate(client_list):
+            stat_client = line.split(',')
 
-        started_at = int(datetime.strptime(stat_client[4], pattern).timestamp())
-        logged_at = int(datetime.utcnow().timestamp())
-        duration_seconds = logged_at - started_at
+            # Avoid sending stats of just recently disconnected client
+            if stat_client[0] in common_names:
+                continue
 
-        # real ip should be `stat_client[1].split(':')[0]`
-        # but we are worry about your privacy
-        obj = {
-            'stats_type': 'vpn_session',
-            'vpn_session': {
-                'public_id': stat_client[0],
-                'private_ip': stat_routing[0],
-                'real_ip': '127.0.0.1',
-                'started_at': started_at,
-                'logged_at': logged_at,
-                'duration_seconds': duration_seconds,
-                'bytes_up': stat_client[3],
-                'bytes_down': stat_client[2],
-                'protocol': 'openvpn',
+            stat_routing = routing_list[index].split(',')
+
+            started_at = int(datetime.strptime(stat_client[4], pattern).timestamp())
+            logged_at = int(datetime.utcnow().timestamp())
+            duration_seconds = logged_at - started_at
+
+            # real ip should be `stat_client[1].split(':')[0]`
+            # but we are worry about your privacy
+            obj = {
+                'stats_type': 'vpn_session',
+                'vpn_session': {
+                    'public_id': stat_client[0],
+                    'private_ip': stat_routing[0],
+                    'real_ip': '127.0.0.1',
+                    'started_at': started_at,
+                    'logged_at': logged_at,
+                    'duration_seconds': duration_seconds,
+                    'bytes_up': stat_client[3],
+                    'bytes_down': stat_client[2],
+                    'protocol': 'openvpn',
+                }
             }
-        }
-        info.append(obj)
+            info.append(obj)
 
-    return info
+        return info
+    except Exception as exc:
+        logging.debug("Error gathering openvpn_session stats: %s", exc)
+        return []
 
 
-def _get_ipset_session_stats():
+def _get_ipsec_session_stats():
     SECONDS = {
+        'second': 1,
         'seconds': 1,
         'minutes': 60,
         'hours': 3600,
     }
     info = []
-    output = subprocess_out(["ipsec", "status"])
-    for line in output:
-        if 'ESTABLISHED' in line:
-            line = line.strip()
-            result = parse(
-                "{} ESTABLISHED {} {} ago, {}[{}]...{}[{}CN={},{}", line)
+    try:
+        output = subprocess_out(["/usr/sbin/ipsec", "status"])
+        for line in output:
+            if 'ESTABLISHED' in line:
+                line = line.strip()
+                result = parse(
+                    "{} ESTABLISHED {} {} ago, {}[{}]...{}[{}CN={},{}", line)
 
-            time_quantity = result[1]
-            time_unit = result[2]
+                time_quantity = result[1]
+                time_unit = result[2]
 
-            duration_seconds = int(time_quantity) * SECONDS[time_unit]
-            logged_at = int(datetime.utcnow().timestamp())
-            started_at = logged_at - duration_seconds
+                duration_seconds = int(time_quantity) * SECONDS[time_unit]
+                logged_at = int(datetime.utcnow().timestamp())
+                started_at = logged_at - duration_seconds
 
-            # real_ip should be `result[5]`
-            # but we are worry about your privacy
-            obj = {
-                'stats_type': 'vpn_session',
-                'vpn_session': {
-                    'public_id': result[7],
-                    'private_ip': result[3],
-                    'real_ip': '127.0.0.1',
-                    'started_at': started_at,
-                    'logged_at': logged_at,
-                    'duration_seconds': duration_seconds,
-                    'bytes_up': '',
-                    'bytes_down': '',
-                    'protocol': 'ipsec',
+                # real_ip should be `result[5]`
+                # but we are worry about your privacy
+                obj = {
+                    'stats_type': 'vpn_session',
+                    'vpn_session': {
+                        'public_id': result[7],
+                        'private_ip': result[3],
+                        'real_ip': '127.0.0.1',
+                        'started_at': started_at,
+                        'logged_at': logged_at,
+                        'duration_seconds': duration_seconds,
+                        'bytes_up': '',
+                        'bytes_down': '',
+                        'protocol': 'ipsec',
+                    }
                 }
-            }
-            info.append(obj)
+                info.append(obj)
 
-    return info
+        return info
+    except Exception as exc:
+        logging.debug("Error gathering ipsec_session stats: %s", exc)
+        return []
 
 
 def vpn_session():
@@ -584,13 +614,15 @@ def vpn_session():
     :return: list of dictionaries with connections statistics
     """
     empty = []
-    return empty  # disable vpn_session metrcis for now
+    try:
+        openvpn_stat = _get_openvpn_session_stats()
+        ipsec_stat = _get_ipsec_session_stats()
 
-    openvpn_stat = _get_openvpn_session_stats()
-    ipsec_stat = _get_ipset_session_stats()
+        result = openvpn_stat + ipsec_stat
+        if len(result) == 0:
+            return empty
 
-    result = openvpn_stat + ipsec_stat
-    if len(result) == 0:
+        return result
+    except Exception as exc:
+        logging.debug("Error gathering vpn_session stats: %s", exc)
         return empty
-
-    return result
