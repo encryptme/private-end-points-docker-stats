@@ -511,6 +511,7 @@ def _get_openvpn_disconnected_clients():
 
 def _get_openvpn_session_stats():
     info = []
+    stat_routing = {}
     try:
         # Obtain the common_name when client-disconnect is executed
         common_names = _get_openvpn_disconnected_clients()
@@ -522,15 +523,18 @@ def _get_openvpn_session_stats():
         client_list = client_block.strip().split('\n')[3:]
         routing_list = routing_block.strip().split('\n')[1:]
 
+        for row in routing_list:
+            private_ip, device = row.split(",")[:2]
+            stat_routing[device] = private_ip
+
         pattern = "%a %b %d %H:%M:%S %Y"
-        for index, line in enumerate(client_list):
+        for line in client_list:
             stat_client = line.split(',')
 
             # Avoid sending stats of just recently disconnected client
-            if stat_client[0] in common_names:
+            public_id = stat_client[0]
+            if public_id in common_names:
                 continue
-
-            stat_routing = routing_list[index].split(',')
 
             started_at = int(datetime.strptime(stat_client[4], pattern).timestamp())
             logged_at = int(datetime.utcnow().timestamp())
@@ -541,8 +545,8 @@ def _get_openvpn_session_stats():
             obj = {
                 'stats_type': 'vpn_session',
                 'vpn_session': {
-                    'public_id': stat_client[0],
-                    'private_ip': stat_routing[0],
+                    'public_id': public_id,
+                    'private_ip': stat_routing[public_id],
                     'real_ip': '127.0.0.1',
                     'started_at': started_at,
                     'logged_at': logged_at,
