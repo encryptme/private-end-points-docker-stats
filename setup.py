@@ -16,7 +16,7 @@ setup(
         ]},
     install_requires=[
         'netifaces==0.10.6',
-        'psutil==5.4.0',
+        'psutil==5.6.6',
         'uptime==3.0.1',
         'proc==0.14',
         'docker==2.5.1',
