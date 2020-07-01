@@ -565,6 +565,10 @@ def _get_openvpn_session_stats():
 
 
 def _get_ipsec_session_stats():
+    KEYS = {
+       'bytes_i': 'bytes_up',
+       'bytes_o': 'bytes_down',
+    }
     SECONDS = {
         'second': 1,
         'seconds': 1,
@@ -572,8 +576,9 @@ def _get_ipsec_session_stats():
         'hours': 3600,
     }
     info = []
+    obj = None
     try:
-        output = subprocess_out(["/usr/sbin/ipsec", "status"])
+        output = subprocess_out(["/usr/sbin/ipsec", "statusall"])
         for line in output:
             if 'ESTABLISHED' in line:
                 line = line.strip()
@@ -603,7 +608,13 @@ def _get_ipsec_session_stats():
                         'protocol': 'ipsec',
                     }
                 }
+            elif obj and "bytes_i" in line and "bytes_o" in line:
+                for value in ("bytes_i", "bytes_o"):
+                    match = re.search(r'(\d+) {}'.format(value), line)
+                    obj['vpn_session'][KEYS[value]] = int(match.group(1)) if match else ''
+
                 info.append(obj)
+                obj = None
 
         return info
     except Exception as exc:
