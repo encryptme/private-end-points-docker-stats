@@ -20,7 +20,7 @@ from encryptme_stats.const import INTERESTING_TAGS, INTERESTING_CONTAINERS, \
     INTERESTING_PROCESSES
 
 __all__ = ["vpn", "cpu", "network", "memory", "filesystem", "process",
-           "docker", "openssl", "contentfiltering", "vpn_session"]
+           "docker", "openssl", "contentfiltering", "vpn_session", "wireguard"]
 
 
 def subprocess_out(command):
@@ -652,7 +652,6 @@ def _get_ipsec_session_stats():
 
 def _get_wireguard_stats():
     """Gather Wireguard statistics."""
-
     try:
         interfaces = subprocess_out(["wg", "show", "interfaces"])
         if not isinstance(interfaces, list):
@@ -666,22 +665,16 @@ def _get_wireguard_stats():
                 continue
             if peers and peers[-1] == '':
                 peers.pop()
-                
             # First element in the list contains interface's data
             # Subsequent elements contain peer's data
-            private_key, public_key, _, _ = peers.pop(0).split('\t')
-            num_peers = len(peers)
-            latest_handshake = 0
+            peers.pop(0)
             now_epoch = int(datetime.utcnow().timestamp())
-
             for peer in peers:
                 _, _, _, private_ip, last_handshake, bytes_up, bytes_down, _ = peer.split('\t')
                 last_handshake = int(last_handshake)
-                if last_handshake > latest_handshake:
-                    latest_handshake = last_handshake
                 if (now_epoch - 120) > last_handshake:
                     continue
-                obj = {
+                info.append({
                     'stats_type': 'vpn_session',
                     'vpn_session': {
                         'public_id': '',
@@ -692,21 +685,10 @@ def _get_wireguard_stats():
                         'bytes_down': bytes_down,
                         'protocol': 'wireguard',
                     }
-                }
-                info.append(obj)
-
-            obj = {
-                'stats_type': 'wireguard',
-                'wireguard': {
-                    'interface': interface,
-                    'num_peers': num_peers,
-                    'public_key': public_key,
-                    'latest_handshake': latest_handshake,
-                }
-            }
-            info.append(obj)
+                })
     except Exception as exc:
-        logging.debug("Error gathering wireguard stats: %s", exc)
+        logging.debug("Error gathering wireguard bandwwith: %s", exc)
+        return []
 
     return info
 
@@ -717,17 +699,51 @@ def vpn_session():
 
     :return: list of dictionaries with connections statistics
     """
-    empty = []
     try:
         openvpn_stat = _get_openvpn_session_stats()
         ipsec_stat = _get_ipsec_session_stats()
         wireguard_stat = _get_wireguard_stats()
 
-        result = openvpn_stat + ipsec_stat + wireguard_stat
-        if len(result) == 0:
-            return empty
-
-        return result
+        return (openvpn_stat + ipsec_stat + wireguard_stat)
     except Exception as exc:
         logging.debug("Error gathering vpn_session stats: %s", exc)
-        return empty
+        return {}
+
+
+def wireguard():
+    """Gather Wireguard statistics."""
+    try:
+        interfaces = subprocess_out(["wg", "show", "interfaces"])
+        if not isinstance(interfaces, list):
+            return []
+        if interfaces and interfaces[-1] == '':
+            interfaces.pop()
+        info = []
+        for interface in interfaces:
+            peers = subprocess_out(["wg", "show", interface, "dump"])
+            if not isinstance(peers, list):
+                continue
+            if peers and peers[-1] == '':
+                peers.pop()
+            # First element in the list contains interface's data
+            # Subsequent elements contain peer's data
+            public_key = peers.pop(0).split('\t')[1]
+            num_peers = len(peers)
+            latest_handshake = 0
+            for peer in peers:
+                handshake = int(peer.split('\t')[4])
+                if handshake > latest_handshake:
+                    latest_handshake = handshake
+            info.append({
+                'stats_type': 'wireguard',
+                'wireguard': {
+                    'interface': interface,
+                    'num_peers': num_peers,
+                    'public_key': public_key,
+                    'latest_handshake': latest_handshake,
+                }
+            })
+    except Exception as exc:
+        logging.debug("Error gathering wireguard stats: %s", exc)
+        return []
+    return info
