@@ -88,25 +88,24 @@ def _get_wireguard_connections():
         now_epoch = int(datetime.utcnow().timestamp())
         interfaces = subprocess_out(["wg", "show", "interfaces"])
         if isinstance(interfaces, list):
-            if interfaces and interfaces[-1] == '':
+            if interfaces and not interfaces[-1]:
                 interfaces.pop()
             for interface in interfaces:
                 peers = subprocess_out(["wg", "show", interface, "dump"])
                 if isinstance(peers, list):
-                    if peers and peers[-1] == '':
+                    if peers and not peers[-1]:
                         peers.pop()
                     if len(peers) < 2:
                         continue
                     for peer in peers[1:]:
                         last_handshake = int(peer.split('\t')[4])
                         # Only count if there was a handshake in the last 20 minutes
-                        if (now_epoch - last_handshake) <= (20*60): 
+                        if (now_epoch - last_handshake) <= (20 * 60): 
                             num_wireguard += 1
     except Exception as exc:
         logging.debug("Error getting wireguard connections: %s", exc)
 
     return num_wireguard
-
 
 
 def vpn():
@@ -652,32 +651,34 @@ def _get_ipsec_session_stats():
 
 def _get_wireguard_stats():
     """Gather Wireguard statistics."""
+    info = []
     try:
         interfaces = subprocess_out(["wg", "show", "interfaces"])
         if not isinstance(interfaces, list):
             return
-        if interfaces and interfaces[-1] == '':
+        if interfaces and not interfaces[-1]:
             interfaces.pop()
-        info = []
         for interface in interfaces:
             peers = subprocess_out(["wg", "show", interface, "dump"])
             if not isinstance(peers, list):
                 continue
-            if peers and peers[-1] == '':
+            if peers and not peers[-1]:
                 peers.pop()
             # First element in the list contains interface's data
             # Subsequent elements contain peer's data
             peers.pop(0)
             now_epoch = int(datetime.utcnow().timestamp())
             for peer in peers:
-                _, _, _, private_ip, last_handshake, bytes_up, bytes_down, _ = peer.split('\t')
+                (public_id, _, _, private_ip, last_handshake,
+                bytes_up, bytes_down, _) = peer.split('\t')
+                
                 last_handshake = int(last_handshake)
                 if (now_epoch - 120) > last_handshake:
                     continue
                 info.append({
                     'stats_type': 'vpn_session',
                     'vpn_session': {
-                        'public_id': '',
+                        'public_id': public_id,
                         'private_ip': private_ip.split('/')[0],
                         'last_handshake': last_handshake,
                         'logged_at': now_epoch,
@@ -688,7 +689,6 @@ def _get_wireguard_stats():
                 })
     except Exception as exc:
         logging.debug("Error gathering wireguard bandwwith: %s", exc)
-        return []
 
     return info
 
@@ -699,31 +699,36 @@ def vpn_session():
 
     :return: list of dictionaries with connections statistics
     """
+    empty = []
     try:
         openvpn_stat = _get_openvpn_session_stats()
         ipsec_stat = _get_ipsec_session_stats()
         wireguard_stat = _get_wireguard_stats()
 
-        return (openvpn_stat + ipsec_stat + wireguard_stat)
+        result = openvpn_stat + ipsec_stat + wireguard_stat
+        if len(result) == 0:
+            return empty
+
+        return result
     except Exception as exc:
         logging.debug("Error gathering vpn_session stats: %s", exc)
-        return {}
+        return empty
 
 
 def wireguard():
     """Gather Wireguard statistics."""
+    info = []
     try:
         interfaces = subprocess_out(["wg", "show", "interfaces"])
         if not isinstance(interfaces, list):
             return []
-        if interfaces and interfaces[-1] == '':
+        if interfaces and not interfaces[-1]:
             interfaces.pop()
-        info = []
         for interface in interfaces:
             peers = subprocess_out(["wg", "show", interface, "dump"])
             if not isinstance(peers, list):
                 continue
-            if peers and peers[-1] == '':
+            if peers and not peers[-1]:
                 peers.pop()
             # First element in the list contains interface's data
             # Subsequent elements contain peer's data
@@ -745,5 +750,5 @@ def wireguard():
             })
     except Exception as exc:
         logging.debug("Error gathering wireguard stats: %s", exc)
-        return []
+
     return info
