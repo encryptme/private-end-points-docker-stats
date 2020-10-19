@@ -85,8 +85,8 @@ class Scheduler:
     auth_key = None
 
     @classmethod
-    def start(cls, server_info, config, now=False, server=None, auth_key=None):
-        """Start the scheduler, and run forever."""
+    def init(cls, server_info, config, now=False, server=None, auth_key=None):
+        """Initialize class attributes."""
         cls.server = server
         if not cls.server:
             raise Exception("A server URL (e.g. http://pep-stats.example.com) "
@@ -95,8 +95,12 @@ class Scheduler:
         cls.server_info = server_info
         cls.auth_key = auth_key
         cls.config = config
+        cls.now = now
 
-        cls.parse_schedule(config, now=now)
+    @classmethod
+    def start(cls):
+        """Start the scheduler, and run forever."""
+        cls.parse_schedule(cls.config, now=cls.now)
 
         while True:
             schedule.run_pending()
@@ -122,10 +126,8 @@ class Scheduler:
     @classmethod
     def gather(cls, method, metric):
         """Gather statistics from the specified metric callable and send."""
-
         def make_message(item, retries, interval):
-            """Creates a Message class."""
-
+            """Create a Message class."""
             item['@timestamp'] = datetime.datetime.utcnow().isoformat()
             item.update(cls.server_info)
             item['@id'] = str(uuid.uuid4())
@@ -135,12 +137,14 @@ class Scheduler:
 
         try:
             result = metric()
-            if not isinstance(result, list):
-                result = [result]
+            if result:  # don't send empty metrics
+                if not isinstance(result, list):
+                    result = [result]
 
-            for doc in result:
-                make_message(doc,
-                             int(cls.config[method]['max_retries']),
-                             int(cls.config[method]['retry_interval'])).send()
+                for doc in result:
+                    make_message(
+                        doc,
+                        int(cls.config[method]['max_retries']),
+                        int(cls.config[method]['retry_interval'])).send()
         except Exception as exc:
             logging.exception("Failed to gather data: %s", exc)

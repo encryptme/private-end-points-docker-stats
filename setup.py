@@ -2,6 +2,7 @@
 
 from distutils.core import setup
 
+
 setup(
     name='encryptme_stats',
     version='0.10.0',
@@ -16,11 +17,12 @@ setup(
         ]},
     install_requires=[
         'netifaces==0.10.6',
-        'psutil==5.4.0',
+        'psutil==5.6.6',
         'uptime==3.0.1',
         'proc==0.14',
         'docker==2.5.1',
         'schedule==0.4.3',
         'requests==2.22.0',
+        'parse==1.14.0',
     ],
 )

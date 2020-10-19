@@ -16,7 +16,6 @@ from encryptme_stats.scheduler import Scheduler
 
 def dump(server_info=None):
     """Print JSON document from all exported metrics."""
-
     for metric_fn in metrics.__all__:
         output = getattr(metrics, metric_fn)()
         if not isinstance(output, list):
@@ -31,7 +30,7 @@ def dump(server_info=None):
     for doc in metrics.network():
         if server_info:
             doc.update(server_info)
-        print(json.dumps({metric_fn: doc}, indent=2))
+        print(json.dumps({"network": doc}, indent=2))
 
 
 def setup_logging(loglevel="INFO"):
@@ -74,6 +73,9 @@ def main():
     parser.add_argument("--server",
                         type=str,
                         help="Specify server URL to send stats to")
+    parser.add_argument("--metric",
+                        type=str,
+                        help="Specify one metric to be sent and exit")
 
     args = parser.parse_args()
 
@@ -90,4 +92,10 @@ def main():
         dump(info)
         sys.exit(0)
 
-    Scheduler.start(info, cfg, now=args.now, server=args.server, auth_key=args.auth_key)
+    Scheduler.init(info, cfg, now=args.now, server=args.server, auth_key=args.auth_key)
+
+    if args.metric:
+        Scheduler.gather(args.metric, getattr(metrics, args.metric))
+        sys.exit(0)
+
+    Scheduler.start()
