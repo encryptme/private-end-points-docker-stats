@@ -1,4 +1,5 @@
 """Gather system statistics."""
+
 from datetime import datetime
 import logging
 import os
@@ -6,17 +7,19 @@ import re
 import select
 import socket
 import subprocess
-import re
+import time
 
 import netifaces
 import proc.core
 import psutil
-import time
 import uptime
 from docker import from_env as docker_from_env
 
-from encryptme_stats.const import INTERESTING_TAGS, INTERESTING_CONTAINERS, \
-    INTERESTING_PROCESSES
+from encryptme_stats.const import (
+    INTERESTING_CONTAINERS, 
+    INTERESTING_PROCESSES,
+    INTERESTING_TAGS,
+)
 
 __all__ = ["vpn", "cpu", "network", "memory", "filesystem", "process",
            "docker", "openssl"]
@@ -85,18 +88,11 @@ def vpn():
 
     :return: dictionary with vpn statistics
     """
-
-    # Get IPSEC encryptme_stats
-    num_ipsec = _get_ipsec_stats()
-
-    # Get OpenVPN Stats
-    num_openvpn = _get_openvpn_stats()
-
     return {
         "stats_type": "vpn",
         "vpn": {
-            "ipsec_connections": num_ipsec,
-            "openvpn_connections": num_openvpn
+            "ipsec_connections": _get_ipsec_stats(),
+            "openvpn_connections": _get_openvpn_stats()
         }
     }
 
@@ -112,8 +108,11 @@ def cpu():
     # Ignoring: steal, guest, guest_nice
 
     def _cpu_stats(stats):
-        return {stat: value for stat, value in stats._asdict().items()
-                if stat in keep_cpu_stats}
+        return {
+            stat: value
+            for stat, value in stats._asdict().items()
+            if stat in keep_cpu_stats
+        }
 
     info = {
         "stats_type": "cpu",
@@ -142,11 +141,9 @@ class Network(object):
     """
 
     def __call__(self, *args, **kwargs):
-
         return self.compute_metrics()
 
     def __init__(self):
-
         self.start_time = time.time()
         self.last_metrics = self.metrics()
 
@@ -165,7 +162,6 @@ class Network(object):
         return info
 
     def compute_metrics(self):
-
         current_counters = self.metrics()
 
         info = []
@@ -188,7 +184,6 @@ class Network(object):
         self.last_metrics = current_counters
 
         return info
-
 
 network = Network()
 
@@ -255,7 +250,6 @@ def filesystem():
     return info
 
 
-
 def process():
     """Check if processes that we care about are running.
 
@@ -320,6 +314,7 @@ def process():
 
     return info
 
+
 def docker():
     """
     Obbtain information on docker containers, if possible.
@@ -378,8 +373,12 @@ def get_date(raw_date, left, right):
 
 def openssl():
     try:
-        output = subprocess_out(
-            ['openssl', 'crl', '-inform', 'PEM', '-text', '-noout', '-in', '/etc/encryptme/pki/crls.pem'])
+        output = subprocess_out([
+            'openssl', 'crl',
+            '-inform', 'PEM',
+            '-text', '-noout',
+            '-in', '/etc/encryptme/pki/crls.pem'
+        ])
 
         #get " Last Update: Feb 16 06:04:54 2018 GMT" and " Next Update: Feb 16 09:04:54 2018 GMT"
         last_update_line = next(i for i in output if 'Last Update' in i)

@@ -1,12 +1,12 @@
 """Probe scheduler and sender."""
 
+from functools import partial
 import datetime
 import logging
+import os
 import random
 import time
 import uuid
-import os
-from functools import partial
 
 import requests
 import schedule
@@ -14,29 +14,29 @@ import schedule
 from encryptme_stats import metrics
 
 
-class Message(object):
+class Message:
     """A message to send.
 
     Handles own rescheduling.
     """
-
-    data = None
-    retries = 0
-    max_retries = 0
-    retry_interval = 0
-    rescheduled = False
-    server = None
 
     def __init__(self, data, max_retries=0, retry_interval=30, server=None):
         self.data = data
         self.max_retries = max_retries
         self.retry_interval = retry_interval
         self.server = server
+        self.rescheduled = False
+        self.retries = 0
+        self.timeout = 30
 
     def send(self):
         """Initiate sending of this message."""
         try:
-            response = requests.post(self.server, json=self.data)
+            response = requests.post(
+                self.server,
+                json=self.data,
+                timeout=self.timeout
+            )
             if not response.status_code == 200:
                 raise Exception('Retry required: %s' % response.status_code)
         except Exception as exc:
@@ -53,7 +53,11 @@ class Message(object):
             """Scheduler endpoint for resending."""
             logging.warning("Retry %d of %d", self.retries, self.max_retries)
             try:
-                response = requests.post(self.server, json=self.data)
+                response = requests.post(
+                    self.server,
+                    json=self.data,
+                    timeout=self.timeout
+                )
                 if not response.status_code == '200':
                     raise Exception('Retry required')
                 return schedule.CancelJob
@@ -72,7 +76,7 @@ class Message(object):
         schedule.every(self.retry_interval).seconds.do(resend)
 
 
-class Scheduler(object):
+class Scheduler:
     """Singleton that sets up scheduling and starts sending metrics"""
 
     server_id = None

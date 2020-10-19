@@ -2,7 +2,6 @@
 
 import configparser
 import json
-
 import os
 
 from encryptme_stats import metrics

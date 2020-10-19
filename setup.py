@@ -4,11 +4,12 @@ from distutils.core import setup
 
 setup(
     name='encryptme_stats',
-    version='0.9.15',
+    version='0.10.0',
     description='Encrypt.me Statistics gatherer',
-    author='Roy Hooper',
-    author_email='rhooper@toybox.ca',
+    author='Encrypt.me',
+    author_email='hello@encrypt.me',
     packages=['encryptme_stats'],
+    python_requires='>3.6',
     entry_points={
         'console_scripts': [
             'encryptme-stats = encryptme_stats:main',
