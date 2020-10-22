@@ -15,10 +15,10 @@ INTERESTING_PROCESSES = [
     "charon",
     "openvpn",
     "starter",
-    "filter_server.py",
+    "server.py",
 ]
-INTERESTING_CONTAINERS = re.compile(r'encryptme|watchtower')
-INTERESTING_TAGS = re.compile(r'/(encryptme|watchtower)')
+INTERESTING_CONTAINERS = re.compile(r'encryptme')
+INTERESTING_TAGS = re.compile(r'/(encryptme)')
 
 DEFAULT_STATS_INTERVAL = 300  # seconds
 DEFAULT_MAX_RETRIES = 3
