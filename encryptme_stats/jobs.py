@@ -10,13 +10,15 @@ class IkeSessionMonitor:
     Monitors IKE up-down events so we can always get session information as
     users disconnect.
     """
-    def __init__(self):
+    def __init__(self, start=False):
         self.push_session_stats = Value('i', 0)
         self.process = Process(
             target=self.run,
             args=[self.push_session_stats],
             name='IPSecSessions',
         )
+        if self.start:
+            self.process.start()
 
     def connect(self):
         # wait up to 10 seconds to ensure the socket is available
@@ -26,6 +28,7 @@ class IkeSessionMonitor:
             try:
                 return vici.Session()
             except socket.error as e:
+                tries += 1
                 time.sleep(1)
         raise Exception(f'Failed to connect to Vici socket after {max_tries} tries.')
 

@@ -8,6 +8,7 @@ import logging
 import os
 import random
 import signal
+import sys
 import time
 import traceback
 import uuid
@@ -111,7 +112,7 @@ class Scheduler:
     def start(cls):
         """Start the scheduler, and run forever."""
         cls.parse_schedule(cls.config, now=cls.now)
-        cls.ike_session_monitor.process.run()
+        cls.ike_session_monitor.process.start()
 
         # ensure that when we stop we also cleanup any child jobs
         for sig in [signal.SIGTERM, signal.SIGINT]:
@@ -123,7 +124,7 @@ class Scheduler:
             schedule.run_pending()
             # if our session monitoring fails try to reconnect
             if not cls.ike_session_monitor.process.is_alive():
-                cls.ike_session_monitor.process.run()
+                cls.ike_session_monitor = jobs.IkeSessionMonitor(start=True)
             # check to see if we need to send one-off session stats due to a disconnect
             if cls.ike_session_monitor.push_session_stats.value:
                 cls.gather('vpn_session', getattr(metrics, 'vpn_session'))

@@ -543,7 +543,7 @@ def _get_openvpn_session_stats():
             duration_seconds = logged_at - started_at
 
             # real ip should be `stat_client[1].split(':')[0]`
-            # but we are worry about your privacy
+            # but for now... no need to log that by default
             obj = {
                 'stats_type': 'vpn_session',
                 'vpn_session': {
