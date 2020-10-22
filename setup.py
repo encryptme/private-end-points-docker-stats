@@ -21,8 +21,9 @@ setup(
         'uptime==3.0.1',
         'proc==0.14',
         'docker==2.5.1',
-        'schedule==0.4.3',
+        'schedule==0.6.0',
         'requests==2.22.0',
         'parse==1.14.0',
+        'vici==5.8.4',
     ],
 )

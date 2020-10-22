@@ -23,6 +23,7 @@ from encryptme_stats.const import (
     INTERESTING_TAGS,
 )
 
+
 __all__ = ["vpn", "cpu", "network", "memory", "filesystem", "process",
            "docker", "openssl", "contentfiltering", "vpn_session"]
 

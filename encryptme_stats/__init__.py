@@ -3,14 +3,12 @@
 import argparse
 import json
 import logging
-import sys
-
 import os
-
+import sys
 import time
 
-from encryptme_stats.config import load_configs
 from encryptme_stats import metrics
+from encryptme_stats.config import load_configs
 from encryptme_stats.scheduler import Scheduler
 
 

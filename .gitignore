@@ -105,3 +105,6 @@ venv.bak/
 
 .idea
 .autoenv
+
+# vim swap files
+.*.sw?

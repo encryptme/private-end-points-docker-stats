@@ -1,17 +1,22 @@
 """Probe scheduler and sender."""
 
 from functools import partial
+from multiprocessing import Process, Queue
 import datetime
+import json
 import logging
 import os
 import random
+import signal
 import time
+import traceback
 import uuid
 
 import requests
 import schedule
 
 from encryptme_stats import metrics
+from encryptme_stats import jobs
 
 
 class Message:
@@ -83,28 +88,71 @@ class Scheduler:
     server = None
     config = None
     auth_key = None
+    ike_session_monitor = None
 
     @classmethod
     def init(cls, server_info, config, now=False, server=None, auth_key=None):
         """Initialize class attributes."""
-        cls.server = server
-        if not cls.server:
+        if cls.server:
+            raise Exception('The Scheduler has already been initialized.')
+        if not server:
             raise Exception("A server URL (e.g. http://pep-stats.example.com) "
                             "is required as a command line parameter or set "
                             "in the encryptme_stats config")
+
+        cls.server = server
         cls.server_info = server_info
         cls.auth_key = auth_key
         cls.config = config
         cls.now = now
+        cls.ike_session_monitor = jobs.IkeSessionMonitor()
 
     @classmethod
     def start(cls):
         """Start the scheduler, and run forever."""
         cls.parse_schedule(cls.config, now=cls.now)
+        cls.ike_session_monitor.process.run()
 
+        # ensure that when we stop we also cleanup any child jobs
+        for sig in [signal.SIGTERM, signal.SIGINT]:
+            signal.signal(sig, cls.cleanup_and_quit)
+
+        # our primary process handles stats due to be sent based on our config
+        # but we have a child process specifically watching for IKE down events
         while True:
             schedule.run_pending()
+            # if our session monitoring fails try to reconnect
+            if not cls.ike_session_monitor.process.is_alive():
+                cls.ike_session_monitor.process.run()
+            # check to see if we need to send one-off session stats due to a disconnect
+            if cls.ike_session_monitor.push_session_stats.value:
+                cls.gather('vpn_session', getattr(metrics, 'vpn_session'))
+                cls.ike_session_monitor.push_session_stats.value = 0
             time.sleep(1)
+
+    @classmethod
+    def cleanup_and_quit(cls, signal_num=None, frame=None, exception=None):
+        """
+        Stops all minions, reports any errors, and ends execution.
+        """
+        # ensure things really end
+        cls.ike_session_monitor.kill()
+        if signal_num:
+            print(f'Aborting; cause signal {signal_num}')
+        elif exception:
+            frames = []
+            tb = traceback.extract_tb(exception.__traceback__)
+            for i, frame in enumerate(tb):
+                where = frame.name + ' - ' + frame.filename
+                frames.append({
+                    'line': frame.line,
+                    'where': f'{where}:{frame.lineno}',
+                    'depth': i,
+                })
+            print(f"\nAborting; caught exception: {str(exception)}")
+            print(json.dumps(frames, indent=4))
+        sys.exit(1)
+
 
     @classmethod
     def parse_schedule(cls, config, now=False):
