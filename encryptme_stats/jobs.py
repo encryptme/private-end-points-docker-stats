@@ -17,7 +17,7 @@ class IkeSessionMonitor:
             args=[self.push_session_stats],
             name='IPSecSessions',
         )
-        if self.start:
+        if start:
             self.process.start()
 
     def connect(self):
