@@ -7,7 +7,6 @@ import os
 import re
 import select
 import socket
-import subprocess
 import time
 
 import netifaces
@@ -22,26 +21,20 @@ from encryptme_stats.const import (
     INTERESTING_PROCESSES,
     INTERESTING_TAGS,
 )
+from encryptme_stats.lib import (
+    get_date,
+    get_proc_name,
+    subprocess_out,
+    WireGuardPeer,
+)
 
 
 __all__ = ["vpn", "cpu", "network", "memory", "filesystem", "process",
            "docker", "openssl", "contentfiltering", "vpn_session", "wireguard"]
 
 
-def subprocess_out(command):
-    try:
-        # Python 3.5+
-        result = subprocess.run(
-            command,
-            stdout=subprocess.PIPE,
-            check=False
-        )
-        output = result.stdout.decode('utf-8').split("\n")
-    except AttributeError:
-        result = subprocess.check_output(command)
-        output = result.decode('utf-8').split("\n")
-    return output
-
+# IPSEC helpers
+# ---------------------------------------------------------------------------
 
 def _get_ipsec_stats():
     """Get stats for IPSEC connections."""
@@ -56,6 +49,111 @@ def _get_ipsec_stats():
 
     return num_ipsec
 
+
+def _get_ipsec_session_stats():
+    KEYS = {
+       'bytes_i': 'bytes_up',
+       'bytes_o': 'bytes_down',
+    }
+    SECONDS = {
+        'second': 1,
+        'seconds': 1,
+        'minutes': 60,
+        'hours': 3600,
+    }
+    info = []
+    obj = None
+    try:
+        output = subprocess_out(["/usr/sbin/ipsec", "statusall"])
+        for line in output:
+            if 'ESTABLISHED' in line:
+                line = line.strip()
+                result = parse(
+                    "{} ESTABLISHED {} {} ago, {}[{}]...{}[{}CN={},{}", line)
+
+                time_quantity = result[1]
+                time_unit = result[2]
+
+                duration_seconds = int(time_quantity) * SECONDS[time_unit]
+                logged_at = int(datetime.utcnow().timestamp())
+                started_at = logged_at - duration_seconds
+
+                # real_ip should be `result[5]`
+                # but we are worry about your privacy
+                obj = {
+                    'stats_type': 'vpn_session',
+                    'vpn_session': {
+                        'public_id': result[7],
+                        'private_ip': result[3],
+                        'real_ip': '127.0.0.1',
+                        'started_at': started_at,
+                        'logged_at': logged_at,
+                        'duration_seconds': duration_seconds,
+                        'bytes_up': '',
+                        'bytes_down': '',
+                        'protocol': 'ipsec',
+                    }
+                }
+            elif obj and "bytes_i" in line and "bytes_o" in line:
+                for value in ("bytes_i", "bytes_o"):
+                    match = re.search(r'(\d+) {}'.format(value), line)
+                    obj['vpn_session'][KEYS[value]] = match.group(1) if match else ''
+
+                info.append(obj)
+                obj = None
+
+        return info
+    except Exception as exc:
+        logging.debug("Error gathering ipsec_session stats: %s", exc)
+        return []
+
+
+# WireGuard helpers
+# ---------------------------------------------------------------------------
+
+def _get_wireguard_stats():
+    """Get number of WireGuard connections."""
+
+    num_wireguard = 0
+    try:
+        epoch_now = int(datetime.utcnow().timestamp())
+        for peer in WireGuardPeer.yield_peers():
+            if peer.is_handshake_recent(epoch_now):
+                num_wireguard += 1
+    except Exception as exc:
+        logging.debug("Error getting wireguard connections: %s", exc)
+
+    return num_wireguard
+
+
+def _get_wireguard_session_stats():
+    """Gather Wireguard statistics."""
+    info = []
+    try:
+        epoch_now = int(datetime.utcnow().timestamp())
+        for peer in WireGuardPeer.yield_peers():
+            if not peer.is_handshake_recent(epoch_now):
+                continue
+            info.append({
+                'stats_type': 'vpn_session',
+                'vpn_session': {
+                    'public_id': peer.server_pubkey,
+                    'private_ip': peer.ipv4_addr,
+                    'last_handshake': peer.last_handshake,
+                    'logged_at': epoch_now,
+                    'bytes_up': peer.bytes_up,
+                    'bytes_down': peer.bytes_down,
+                    'protocol': 'wireguard',
+                }
+            })
+    except Exception as exc:
+        logging.debug("Error gathering wireguard bandwwith: %s", exc)
+
+    return info
+
+
+# OpenVPN Helpers
+# ---------------------------------------------------------------------------
 
 def _get_openvpn_stats(path="/var/run/openvpn/server-0.sock"):
     """Get stats for OpenVPN connections."""
@@ -85,31 +183,68 @@ def _get_openvpn_stats(path="/var/run/openvpn/server-0.sock"):
     return 0
 
 
-def _get_wireguard_connections():
-    """Get number of WireGuard connections."""
-
-    num_wireguard = 0
+def _get_openvpn_session_stats():
+    info = []
+    stat_routing = {}
     try:
-        now_epoch = int(datetime.utcnow().timestamp())
-        interfaces = subprocess_out(["wg", "show", "interfaces"])
-        if isinstance(interfaces, list):
-            if interfaces and not interfaces[-1]:
-                interfaces.pop()
-            for interface in interfaces:
-                peers = subprocess_out(["wg", "show", interface, "dump"])
-                if isinstance(peers, list):
-                    # the first line isn't a peer, but info about the server
-                    for peer in peers[1:]:
-                        last_handshake = int(peer.split('\t')[4])
-                        # Only count if there was a handshake in the last few minutes
-                        # by default, handshakes happen every 2 minutes
-                        if (now_epoch - last_handshake) <= (4 * 60):
-                            num_wireguard += 1
+        # Obtain the common_name when client-disconnect is executed
+        CN_FILE = "/tmp/common_names.txt"
+        common_names = []
+        if os.path.exists(CN_FILE):
+            with open(CN_FILE, 'r') as f:
+                common_names = f.read().splitlines()
+
+        output = subprocess_out(["cat", "/var/run/openvpn/server-0.status"])
+        output = "\n".join(output)
+        top = output.split('GLOBAL STATS')[0]
+        client_block, routing_block = top.split('ROUTING TABLE')
+
+        client_list = client_block.strip().split('\n')[3:]
+        routing_list = routing_block.strip().split('\n')[1:]
+
+        for row in routing_list:
+            private_ip, device = row.split(",")[:2]
+            stat_routing[device] = private_ip
+
+        pattern = "%a %b %d %H:%M:%S %Y"
+        for line in client_list:
+            stat_client = line.split(',')
+
+            # Avoid sending stats of just recently disconnected client
+            public_id = stat_client[0]
+            if public_id in common_names:
+                continue
+
+            started_at = int(datetime.strptime(stat_client[4], pattern).timestamp())
+            logged_at = int(datetime.utcnow().timestamp())
+            duration_seconds = logged_at - started_at
+
+            # real ip should be `stat_client[1].split(':')[0]`
+            # but for now... no need to log that by default
+            obj = {
+                'stats_type': 'vpn_session',
+                'vpn_session': {
+                    'public_id': public_id,
+                    'private_ip': stat_routing[public_id],
+                    'real_ip': '127.0.0.1',
+                    'started_at': started_at,
+                    'logged_at': logged_at,
+                    'duration_seconds': duration_seconds,
+                    'bytes_up': stat_client[3],
+                    'bytes_down': stat_client[2],
+                    'protocol': 'openvpn',
+                }
+            }
+            info.append(obj)
+
+        return info
     except Exception as exc:
-        logging.debug("Error getting wireguard connections: %s", exc)
+        logging.debug("Error gathering openvpn_session stats: %s", exc)
+        return []
 
-    return num_wireguard
 
+# Metrics
+# ---------------------------------------------------------------------------
 
 def vpn():
     """
@@ -119,14 +254,14 @@ def vpn():
     """
     num_ipsec = _get_ipsec_stats()
     num_openvpn = _get_openvpn_stats()
-    num_wireguard = _get_wireguard_connections()
+    num_wireguard = _get_wireguard_stats()
 
     return {
         "stats_type": "vpn",
         "vpn": {
             "ipsec_connections": num_ipsec,
             "openvpn_connections": num_openvpn,
-            "wireguard_connections": num_wireguard
+            "wireguard_connections": num_wireguard,
         }
     }
 
@@ -137,7 +272,9 @@ def cpu():
 
     :return: dictionary with CPU statistics
     """
-    keep_cpu_stats = ['user', 'idle', 'system', 'nice', 'iowait', 'irq', 'softirq']
+    keep_cpu_stats = [
+        'user', 'idle', 'system', 'nice', 'iowait', 'irq', 'softirq'
+    ]
     # Ignoring: steal, guest, guest_nice
 
     def _cpu_stats(stats):
@@ -283,24 +420,6 @@ def filesystem():
     return info
 
 
-def _get_proc_name(proc_info, interesting_procs):
-    """
-    Obtain the proper process name.
-
-    In case the comm field is cut to 15 chars
-    it will return the name of the interesting process.
-    """
-    if proc_info:
-        command = proc_info.comm
-        if command in interesting_procs:
-            return command
-        elif len(command) == 15:
-            for name in interesting_procs:
-                if name.startswith(command):
-                    return name
-    return None
-
-
 def process():
     """
     Check if processes that we care about are running.
@@ -321,7 +440,7 @@ def process():
         proc_info = proc.core.Process.from_path(
             os.path.join(proc_root, str(pid)))
 
-        proc_name = _get_proc_name(proc_info, interesting_procs)
+        proc_name = get_proc_name(proc_info, interesting_procs)
         if not proc_name:
             continue
 
@@ -331,7 +450,6 @@ def process():
         if proc_name not in info['proc']:
             info['proc'][proc_name] = {
                 'running': proc_info.state in ('R', 'S', 'D', 'T', 'W'),
-                # 'state': proc_info.state,
                 'pid': proc_info.pid,
                 'ppid': proc_info.ppid,
                 'user_time': int(proc_info.stat_fields[16]),  # cutime
@@ -421,13 +539,6 @@ def docker():
     return containers
 
 
-def get_date(raw_date, left, right):
-    start = raw_date.index(left) + len(left)
-    end = raw_date.index(right, start)
-    raw_date = raw_date[start:end]
-    return datetime.strptime(raw_date, '%b %d %H:%M:%S %Y')
-
-
 def openssl():
     try:
         output = subprocess_out([
@@ -470,43 +581,34 @@ def openssl():
         return {}
 
 
-def _get_domain_stats(path):
-    """Get stats for blacklisted Domains."""
-    logging.debug("Getting domain stats from %s", path)
-    os.chdir(path)
-    domains = {}
-    for file in glob.glob("*.blacklist"):
-        count = 0
-        content_type = file.split('.')[0]
-        for line in open(os.path.join(path, file)):
-            count += 1
+def wireguard():
+    """Gather Wireguard statistics."""
+    info = []
+    try:
+        now_epoch = int(datetime.utcnow().timestamp())
+        server_pubkey = None
+        num_peers = len(peers) -1
+        num_connections = 0
+        latest_handshake = 0
+        # technically we COULD have 2 iterfaces... but we don't do that
+        for peer in WireGuardPeer.yield_peers():
+            if not server_pubkey:
+                server_pubkey = peer.server_pubkey
+            if peer.last_handshake > latest_handshake:
+                latest_handshake = peer.last_handshake
+        info.append({
+            'stats_type': 'wireguard',
+            'wireguard': {
+                'interface': interface,
+                'num_peers': num_peers,
+                'public_key': public_key,
+                'latest_handshake': latest_handshake,
+            }
+        })
+    except Exception as exc:
+        logging.debug("Error gathering wireguard stats: %s", exc)
 
-        domains[content_type] = count
-
-    return domains
-
-
-def _get_ip_stats():
-    """Get stats for blacklisted IPs."""
-    ips = {}
-    output = subprocess_out(["/usr/sbin/ipset", "-n", "list"])
-    for sublist in output:
-        if not sublist:
-            continue
-        list_name = sublist.split('.')[0]
-        lines = subprocess_out(["/usr/sbin/ipset", "list", sublist])
-
-        index = lines.index('Members:')
-        lines = lines[index + 1:]
-        while "" in lines:
-            del lines[lines.index("")]
-
-        if list_name in ips:
-            ips[list_name] += len(lines)
-        else:
-            ips[list_name] = len(lines)
-
-    return ips
+    return info
 
 
 def contentfiltering(path="/etc/encryptme/filters"):
@@ -516,9 +618,34 @@ def contentfiltering(path="/etc/encryptme/filters"):
     :return: dictionary with content-filtering statistics
     """
     try:
-        domain_stats = _get_domain_stats(path)
+        # blocked domains
+        os.chdir(path)
+        domain_stats = {}
+        for file in glob.glob("*.blacklist"):
+            count = 0
+            content_type = file.split('.')[0]
+            for line in open(os.path.join(path, file)):
+                count += 1
+            domain_stats[content_type] = count
 
-        ip_stats = _get_ip_stats()
+        # blocked IPs
+        ip_stats = {}
+        output = subprocess_out(["/usr/sbin/ipset", "-n", "list"])
+        for sublist in output:
+            if not sublist:
+                continue
+            list_name = sublist.split('.')[0]
+            lines = subprocess_out(["/usr/sbin/ipset", "list", sublist])
+
+            index = lines.index('Members:')
+            lines = lines[index + 1:]
+            while "" in lines:
+                del lines[lines.index("")]
+
+            if list_name in ip_stats:
+                ip_stats[list_name] += len(lines)
+            else:
+                ip_stats[list_name] = len(lines)
 
         return {
             "stats_type": "contentfiltering",
@@ -532,172 +659,6 @@ def contentfiltering(path="/etc/encryptme/filters"):
         return {}
 
 
-def _get_openvpn_disconnected_clients():
-    CN_FILE = "/tmp/common_names.txt"
-    common_names = []
-    if os.path.exists(CN_FILE):
-        with open(CN_FILE) as f:
-            common_names = f.read().splitlines()
-
-    return common_names
-
-
-def _get_openvpn_session_stats():
-    info = []
-    stat_routing = {}
-    try:
-        # Obtain the common_name when client-disconnect is executed
-        common_names = _get_openvpn_disconnected_clients()
-        output = subprocess_out(["cat", "/var/run/openvpn/server-0.status"])
-        output = "\n".join(output)
-        top = output.split('GLOBAL STATS')[0]
-        client_block, routing_block = top.split('ROUTING TABLE')
-
-        client_list = client_block.strip().split('\n')[3:]
-        routing_list = routing_block.strip().split('\n')[1:]
-
-        for row in routing_list:
-            private_ip, device = row.split(",")[:2]
-            stat_routing[device] = private_ip
-
-        pattern = "%a %b %d %H:%M:%S %Y"
-        for line in client_list:
-            stat_client = line.split(',')
-
-            # Avoid sending stats of just recently disconnected client
-            public_id = stat_client[0]
-            if public_id in common_names:
-                continue
-
-            started_at = int(datetime.strptime(stat_client[4], pattern).timestamp())
-            logged_at = int(datetime.utcnow().timestamp())
-            duration_seconds = logged_at - started_at
-
-            # real ip should be `stat_client[1].split(':')[0]`
-            # but for now... no need to log that by default
-            obj = {
-                'stats_type': 'vpn_session',
-                'vpn_session': {
-                    'public_id': public_id,
-                    'private_ip': stat_routing[public_id],
-                    'real_ip': '127.0.0.1',
-                    'started_at': started_at,
-                    'logged_at': logged_at,
-                    'duration_seconds': duration_seconds,
-                    'bytes_up': stat_client[3],
-                    'bytes_down': stat_client[2],
-                    'protocol': 'openvpn',
-                }
-            }
-            info.append(obj)
-
-        return info
-    except Exception as exc:
-        logging.debug("Error gathering openvpn_session stats: %s", exc)
-        return []
-
-
-def _get_ipsec_session_stats():
-    KEYS = {
-       'bytes_i': 'bytes_up',
-       'bytes_o': 'bytes_down',
-    }
-    SECONDS = {
-        'second': 1,
-        'seconds': 1,
-        'minutes': 60,
-        'hours': 3600,
-    }
-    info = []
-    obj = None
-    try:
-        output = subprocess_out(["/usr/sbin/ipsec", "statusall"])
-        for line in output:
-            if 'ESTABLISHED' in line:
-                line = line.strip()
-                result = parse(
-                    "{} ESTABLISHED {} {} ago, {}[{}]...{}[{}CN={},{}", line)
-
-                time_quantity = result[1]
-                time_unit = result[2]
-
-                duration_seconds = int(time_quantity) * SECONDS[time_unit]
-                logged_at = int(datetime.utcnow().timestamp())
-                started_at = logged_at - duration_seconds
-
-                # real_ip should be `result[5]`
-                # but we are worry about your privacy
-                obj = {
-                    'stats_type': 'vpn_session',
-                    'vpn_session': {
-                        'public_id': result[7],
-                        'private_ip': result[3],
-                        'real_ip': '127.0.0.1',
-                        'started_at': started_at,
-                        'logged_at': logged_at,
-                        'duration_seconds': duration_seconds,
-                        'bytes_up': '',
-                        'bytes_down': '',
-                        'protocol': 'ipsec',
-                    }
-                }
-            elif obj and "bytes_i" in line and "bytes_o" in line:
-                for value in ("bytes_i", "bytes_o"):
-                    match = re.search(r'(\d+) {}'.format(value), line)
-                    obj['vpn_session'][KEYS[value]] = match.group(1) if match else ''
-
-                info.append(obj)
-                obj = None
-
-        return info
-    except Exception as exc:
-        logging.debug("Error gathering ipsec_session stats: %s", exc)
-        return []
-
-
-def _get_wireguard_stats():
-    """Gather Wireguard statistics."""
-    info = []
-    try:
-        interfaces = subprocess_out(["wg", "show", "interfaces"])
-        if not isinstance(interfaces, list):
-            return
-        if interfaces and not interfaces[-1]:
-            interfaces.pop()
-        for interface in interfaces:
-            peers = subprocess_out(["wg", "show", interface, "dump"])
-            if not isinstance(peers, list):
-                continue
-            if peers and not peers[-1]:
-                peers.pop()
-            # First element in the list contains interface's data
-            # Subsequent elements contain peer's data
-            peers.pop(0)
-            now_epoch = int(datetime.utcnow().timestamp())
-            for peer in peers:
-                (public_id, _, _, private_ip, last_handshake,
-                bytes_up, bytes_down, _) = peer.split('\t')
-                last_handshake = int(last_handshake)
-                if (now_epoch - 120) > last_handshake:
-                    continue
-                info.append({
-                    'stats_type': 'vpn_session',
-                    'vpn_session': {
-                        'public_id': public_id,
-                        'private_ip': private_ip.split('/')[0],
-                        'last_handshake': last_handshake,
-                        'logged_at': now_epoch,
-                        'bytes_up': bytes_up,
-                        'bytes_down': bytes_down,
-                        'protocol': 'wireguard',
-                    }
-                })
-    except Exception as exc:
-        logging.debug("Error gathering wireguard bandwwith: %s", exc)
-
-    return info
-
-
 def vpn_session():
     """
     Gather per-connection stats.
@@ -708,7 +669,7 @@ def vpn_session():
     try:
         openvpn_stat = _get_openvpn_session_stats()
         ipsec_stat = _get_ipsec_session_stats()
-        wireguard_stat = _get_wireguard_stats()
+        wireguard_stat = _get_wireguard_session_stats()
 
         result = openvpn_stat + ipsec_stat + wireguard_stat
         if len(result) == 0:
@@ -718,42 +679,3 @@ def vpn_session():
     except Exception as exc:
         logging.debug("Error gathering vpn_session stats: %s", exc)
         return empty
-
-
-def wireguard():
-    """Gather Wireguard statistics."""
-    info = []
-    try:
-        interfaces = subprocess_out(["wg", "show", "interfaces"])
-        if not isinstance(interfaces, list):
-            return []
-        if interfaces and not interfaces[-1]:
-            interfaces.pop()
-        for interface in interfaces:
-            peers = subprocess_out(["wg", "show", interface, "dump"])
-            if not isinstance(peers, list):
-                continue
-            if peers and not peers[-1]:
-                peers.pop()
-            # First element in the list contains interface's data
-            # Subsequent elements contain peer's data
-            public_key = peers.pop(0).split('\t')[1]
-            num_peers = len(peers)
-            latest_handshake = 0
-            for peer in peers:
-                handshake = int(peer.split('\t')[4])
-                if handshake > latest_handshake:
-                    latest_handshake = handshake
-            info.append({
-                'stats_type': 'wireguard',
-                'wireguard': {
-                    'interface': interface,
-                    'num_peers': num_peers,
-                    'public_key': public_key,
-                    'latest_handshake': latest_handshake,
-                }
-            })
-    except Exception as exc:
-        logging.debug("Error gathering wireguard stats: %s", exc)
-
-    return info
