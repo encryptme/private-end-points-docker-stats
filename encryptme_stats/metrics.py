@@ -86,7 +86,7 @@ def _get_openvpn_stats(path="/var/run/openvpn/server-0.sock"):
 
 
 def _get_wireguard_connections():
-    """Get number of WIREGUARD connections."""
+    """Get number of WireGuard connections."""
 
     num_wireguard = 0
     try:
@@ -98,14 +98,12 @@ def _get_wireguard_connections():
             for interface in interfaces:
                 peers = subprocess_out(["wg", "show", interface, "dump"])
                 if isinstance(peers, list):
-                    if peers and not peers[-1]:
-                        peers.pop()
-                    if len(peers) < 2:
-                        continue
+                    # the first line isn't a peer, but info about the server
                     for peer in peers[1:]:
                         last_handshake = int(peer.split('\t')[4])
-                        # Only count if there was a handshake in the last 20 minutes
-                        if (now_epoch - last_handshake) <= (20 * 60):
+                        # Only count if there was a handshake in the last few minutes
+                        # by default, handshakes happen every 2 minutes
+                        if (now_epoch - last_handshake) <= (4 * 60):
                             num_wireguard += 1
     except Exception as exc:
         logging.debug("Error getting wireguard connections: %s", exc)
