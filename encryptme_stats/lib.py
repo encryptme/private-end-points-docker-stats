@@ -46,7 +46,7 @@ class WireGuardPeer:
     Cleans up peer output from `wg show wg# dump` commands and provides useful,
     typed properties.
     """
-    def __init__(self, wg_dump_line, server_pubkey):
+    def __init__(self, wg_dump_line, server_pubkey, server_iface):
         self.wg_dump_line = wg_dump_line
         (
             self.pubkey,  # WG public key
@@ -59,6 +59,7 @@ class WireGuardPeer:
             self.keepalive,  # 'off' or 'on'
         ) = wg_dump_line.split('\t')
         self.server_pubkey = server_pubkey
+        self.server_iface = server_iface
         # clean up our data to be easier to process
         self.last_handshake = int(self.last_handshake)
         self.bytes_up = int(self.bytes_up)
@@ -77,7 +78,7 @@ class WireGuardPeer:
             # first line is server info: privkey, pubkey, port, fwmark
             server_pubkey = peer_dump[0].split('\t')[1]
             for peer_data in peer_dump[1:]:
-                yield cls(peer_dump, server_pubkey)
+                yield cls(peer_data, server_pubkey, interface)
 
     def is_handshake_recent(self, epoch_now=None, minutes=4):
         if not epoch_now:

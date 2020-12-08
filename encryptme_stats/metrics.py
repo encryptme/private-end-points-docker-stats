@@ -147,7 +147,7 @@ def _get_wireguard_session_stats():
                 }
             })
     except Exception as exc:
-        logging.debug("Error gathering wireguard bandwwith: %s", exc)
+        logging.debug("Error gathering wireguard bandwidth: %s", exc)
 
     return info
 
@@ -587,21 +587,25 @@ def wireguard():
     try:
         now_epoch = int(datetime.utcnow().timestamp())
         server_pubkey = None
-        num_peers = len(peers) -1
+        server_iface = None
+        num_peers = 0
         num_connections = 0
         latest_handshake = 0
         # technically we COULD have 2 iterfaces... but we don't do that
         for peer in WireGuardPeer.yield_peers():
+            num_peers += 1
             if not server_pubkey:
                 server_pubkey = peer.server_pubkey
+            if not server_iface:
+                server_iface = peer.server_iface
             if peer.last_handshake > latest_handshake:
                 latest_handshake = peer.last_handshake
         info.append({
             'stats_type': 'wireguard',
             'wireguard': {
-                'interface': interface,
-                'num_peers': num_peers,
-                'public_key': public_key,
+                'interface': server_iface,
+                'num_peers': num_peers,  # TOTAL, not necessarily active
+                'public_key': server_pubkey,
                 'latest_handshake': latest_handshake,
             }
         })
