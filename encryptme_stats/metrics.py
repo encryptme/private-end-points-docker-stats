@@ -18,14 +18,14 @@ from docker import from_env as docker_from_env
 from parse import parse
 
 from encryptme_stats.const import (
-    INTERESTING_CONTAINERS, 
+    INTERESTING_CONTAINERS,
     INTERESTING_PROCESSES,
     INTERESTING_TAGS,
 )
 
 
 __all__ = ["vpn", "cpu", "network", "memory", "filesystem", "process",
-           "docker", "openssl", "contentfiltering", "vpn_session"]
+           "docker", "openssl", "contentfiltering", "vpn_session", "wireguard"]
 
 
 def subprocess_out(command):
@@ -85,17 +85,50 @@ def _get_openvpn_stats(path="/var/run/openvpn/server-0.sock"):
     return 0
 
 
+def _get_wireguard_connections():
+    """Get number of WIREGUARD connections."""
+
+    num_wireguard = 0
+    try:
+        now_epoch = int(datetime.utcnow().timestamp())
+        interfaces = subprocess_out(["wg", "show", "interfaces"])
+        if isinstance(interfaces, list):
+            if interfaces and not interfaces[-1]:
+                interfaces.pop()
+            for interface in interfaces:
+                peers = subprocess_out(["wg", "show", interface, "dump"])
+                if isinstance(peers, list):
+                    if peers and not peers[-1]:
+                        peers.pop()
+                    if len(peers) < 2:
+                        continue
+                    for peer in peers[1:]:
+                        last_handshake = int(peer.split('\t')[4])
+                        # Only count if there was a handshake in the last 20 minutes
+                        if (now_epoch - last_handshake) <= (20 * 60):
+                            num_wireguard += 1
+    except Exception as exc:
+        logging.debug("Error getting wireguard connections: %s", exc)
+
+    return num_wireguard
+
+
 def vpn():
     """
     Gather VPN connection statistics.
 
     :return: dictionary with vpn statistics
     """
+    num_ipsec = _get_ipsec_stats()
+    num_openvpn = _get_openvpn_stats()
+    num_wireguard = _get_wireguard_connections()
+
     return {
         "stats_type": "vpn",
         "vpn": {
-            "ipsec_connections": _get_ipsec_stats(),
-            "openvpn_connections": _get_openvpn_stats()
+            "ipsec_connections": num_ipsec,
+            "openvpn_connections": num_openvpn,
+            "wireguard_connections": num_wireguard
         }
     }
 
@@ -613,7 +646,7 @@ def _get_ipsec_session_stats():
             elif obj and "bytes_i" in line and "bytes_o" in line:
                 for value in ("bytes_i", "bytes_o"):
                     match = re.search(r'(\d+) {}'.format(value), line)
-                    obj['vpn_session'][KEYS[value]] = int(match.group(1)) if match else ''
+                    obj['vpn_session'][KEYS[value]] = match.group(1) if match else ''
 
                 info.append(obj)
                 obj = None
@@ -622,6 +655,49 @@ def _get_ipsec_session_stats():
     except Exception as exc:
         logging.debug("Error gathering ipsec_session stats: %s", exc)
         return []
+
+
+def _get_wireguard_stats():
+    """Gather Wireguard statistics."""
+    info = []
+    try:
+        interfaces = subprocess_out(["wg", "show", "interfaces"])
+        if not isinstance(interfaces, list):
+            return
+        if interfaces and not interfaces[-1]:
+            interfaces.pop()
+        for interface in interfaces:
+            peers = subprocess_out(["wg", "show", interface, "dump"])
+            if not isinstance(peers, list):
+                continue
+            if peers and not peers[-1]:
+                peers.pop()
+            # First element in the list contains interface's data
+            # Subsequent elements contain peer's data
+            peers.pop(0)
+            now_epoch = int(datetime.utcnow().timestamp())
+            for peer in peers:
+                (public_id, _, _, private_ip, last_handshake,
+                bytes_up, bytes_down, _) = peer.split('\t')
+                last_handshake = int(last_handshake)
+                if (now_epoch - 120) > last_handshake:
+                    continue
+                info.append({
+                    'stats_type': 'vpn_session',
+                    'vpn_session': {
+                        'public_id': public_id,
+                        'private_ip': private_ip.split('/')[0],
+                        'last_handshake': last_handshake,
+                        'logged_at': now_epoch,
+                        'bytes_up': bytes_up,
+                        'bytes_down': bytes_down,
+                        'protocol': 'wireguard',
+                    }
+                })
+    except Exception as exc:
+        logging.debug("Error gathering wireguard bandwwith: %s", exc)
+
+    return info
 
 
 def vpn_session():
@@ -634,8 +710,9 @@ def vpn_session():
     try:
         openvpn_stat = _get_openvpn_session_stats()
         ipsec_stat = _get_ipsec_session_stats()
+        wireguard_stat = _get_wireguard_stats()
 
-        result = openvpn_stat + ipsec_stat
+        result = openvpn_stat + ipsec_stat + wireguard_stat
         if len(result) == 0:
             return empty
 
@@ -643,3 +720,42 @@ def vpn_session():
     except Exception as exc:
         logging.debug("Error gathering vpn_session stats: %s", exc)
         return empty
+
+
+def wireguard():
+    """Gather Wireguard statistics."""
+    info = []
+    try:
+        interfaces = subprocess_out(["wg", "show", "interfaces"])
+        if not isinstance(interfaces, list):
+            return []
+        if interfaces and not interfaces[-1]:
+            interfaces.pop()
+        for interface in interfaces:
+            peers = subprocess_out(["wg", "show", interface, "dump"])
+            if not isinstance(peers, list):
+                continue
+            if peers and not peers[-1]:
+                peers.pop()
+            # First element in the list contains interface's data
+            # Subsequent elements contain peer's data
+            public_key = peers.pop(0).split('\t')[1]
+            num_peers = len(peers)
+            latest_handshake = 0
+            for peer in peers:
+                handshake = int(peer.split('\t')[4])
+                if handshake > latest_handshake:
+                    latest_handshake = handshake
+            info.append({
+                'stats_type': 'wireguard',
+                'wireguard': {
+                    'interface': interface,
+                    'num_peers': num_peers,
+                    'public_key': public_key,
+                    'latest_handshake': latest_handshake,
+                }
+            })
+    except Exception as exc:
+        logging.debug("Error gathering wireguard stats: %s", exc)
+
+    return info
