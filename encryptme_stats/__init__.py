@@ -25,12 +25,13 @@ def dump(server_info=None, metric=None):
                 doc.update(server_info)
             print(json.dumps({metric_fn: doc}, indent=2))
 
-    # Wait a moment to test network delta
-    time.sleep(1)
-    for doc in metrics.network():
-        if server_info:
-            doc.update(server_info)
-        print(json.dumps({"network": doc}, indent=2))
+    if not metric or metric == 'network':
+        # Wait a moment to test network delta
+        time.sleep(1)
+        for doc in metrics.network():
+            if server_info:
+                doc.update(server_info)
+            print(json.dumps({"network": doc}, indent=2))
 
 
 def setup_logging(loglevel="INFO"):
