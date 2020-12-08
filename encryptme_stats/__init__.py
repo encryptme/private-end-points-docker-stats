@@ -12,9 +12,11 @@ from encryptme_stats.config import load_configs
 from encryptme_stats.scheduler import Scheduler
 
 
-def dump(server_info=None):
+def dump(server_info=None, metric=None):
     """Print JSON document from all exported metrics."""
     for metric_fn in metrics.__all__:
+        if metric and metric != metric_fn:
+            continue
         output = getattr(metrics, metric_fn)()
         if not isinstance(output, list):
             output = [output]
@@ -73,7 +75,7 @@ def main():
                         help="Specify server URL to send stats to")
     parser.add_argument("--metric",
                         type=str,
-                        help="Specify one metric to be sent and exit")
+                        help="Specify one metric to be sent/dumped and exit")
 
     args = parser.parse_args()
 
@@ -87,7 +89,7 @@ def main():
     info, cfg = load_configs(args)
 
     if args.dump:
-        dump(info)
+        dump(info, args.metric)
         sys.exit(0)
 
     Scheduler.init(info, cfg, now=args.now, server=args.server, auth_key=args.auth_key)
