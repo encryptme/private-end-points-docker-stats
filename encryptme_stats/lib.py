@@ -34,11 +34,11 @@ def subprocess_out(command):
             stdout=subprocess.PIPE,
             check=False
         )
-        output = result.stdout.decode('utf-8').strip().split("\n")
+        output = result.stdout.decode('utf-8').strip()
     except AttributeError:
         result = subprocess.check_output(command)
-        output = result.decode('utf-8').strip().split("\n")
-    return output
+        output = result.decode('utf-8').strip()
+    return output.split("\n") if output else []
 
 
 class WireGuardPeer:
