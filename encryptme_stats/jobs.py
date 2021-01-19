@@ -37,14 +37,14 @@ class IkeSessionMonitor:
         # we'll block with each loop until the event we care about happens
         for label, event in session.listen(["ike-updown"]):
             # ... just in case!
-            if label != "ike-updown":
+            if label != b"ike-updown":
                 continue
             # don't worry about 'up' events; we'll always get this on regular
             # polls or disconnect
-            if event.get("up", "") == "yes":
+            if event.get("up", "") == b"yes":
                 continue
             # flag ourselves to send session stats
-            push_session_stats.value = 1
+            self.push_session_stats.value = 1
 
     def kill(self, sigkill=False):
         if self.process.is_alive():
