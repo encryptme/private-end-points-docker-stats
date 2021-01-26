@@ -3,20 +3,20 @@
 import argparse
 import json
 import logging
-import sys
-
 import os
-
+import sys
 import time
 
-from encryptme_stats.config import load_configs
 from encryptme_stats import metrics
+from encryptme_stats.config import load_configs
 from encryptme_stats.scheduler import Scheduler
 
 
-def dump(server_info=None):
+def dump(server_info=None, metric=None):
     """Print JSON document from all exported metrics."""
     for metric_fn in metrics.__all__:
+        if metric and metric != metric_fn:
+            continue
         output = getattr(metrics, metric_fn)()
         if not isinstance(output, list):
             output = [output]
@@ -25,12 +25,13 @@ def dump(server_info=None):
                 doc.update(server_info)
             print(json.dumps({metric_fn: doc}, indent=2))
 
-    # Wait a moment to test network delta
-    time.sleep(1)
-    for doc in metrics.network():
-        if server_info:
-            doc.update(server_info)
-        print(json.dumps({"network": doc}, indent=2))
+    if not metric or metric == 'network':
+        # Wait a moment to test network delta
+        time.sleep(1)
+        for doc in metrics.network():
+            if server_info:
+                doc.update(server_info)
+            print(json.dumps({"network": doc}, indent=2))
 
 
 def setup_logging(loglevel="INFO"):
@@ -75,7 +76,7 @@ def main():
                         help="Specify server URL to send stats to")
     parser.add_argument("--metric",
                         type=str,
-                        help="Specify one metric to be sent and exit")
+                        help="Specify one metric to be sent/dumped and exit")
 
     args = parser.parse_args()
 
@@ -89,7 +90,7 @@ def main():
     info, cfg = load_configs(args)
 
     if args.dump:
-        dump(info)
+        dump(info, args.metric)
         sys.exit(0)
 
     Scheduler.init(info, cfg, now=args.now, server=args.server, auth_key=args.auth_key)

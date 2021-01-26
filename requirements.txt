@@ -7,3 +7,4 @@ docker==2.5.1
 schedule==0.4.3
 requests==2.22.0
 parse==1.14.0
+vici==5.8.4

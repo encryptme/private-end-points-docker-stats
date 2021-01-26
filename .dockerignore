@@ -1,0 +1,4 @@
+**/.*.sw?
+**/__pycache__
+encryptme_stats.egg-info
+.git
