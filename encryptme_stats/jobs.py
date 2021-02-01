@@ -1,6 +1,7 @@
 from multiprocessing import Process, Value
 import os
 import signal
+import socket
 
 import vici
 
